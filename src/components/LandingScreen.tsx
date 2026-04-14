@@ -11,6 +11,7 @@ export function LandingScreen({ onLoaded, onBuild }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const handleFile = useCallback(async (file: File) => {
     if (!/\.(xlsx|xls)$/i.test(file.name)) {
@@ -48,12 +49,27 @@ export function LandingScreen({ onLoaded, onBuild }: Props) {
 
         {/* Two entry cards */}
         <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2">
-          {/* Upload Excel — triggers file picker directly */}
+          {/* Upload Excel — triggers file picker or accepts drag-and-drop */}
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             disabled={loading}
-            className="group flex flex-col items-center gap-5 rounded-[20px] border-2 border-neutral-gray-200 bg-white px-8 py-10 text-center transition-all hover:border-brand-cyan-500 hover:shadow-lg disabled:opacity-60"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files[0];
+              if (f) handleFile(f);
+            }}
+            className={`group flex flex-col items-center gap-5 rounded-[20px] border-2 px-8 py-10 text-center transition-all disabled:opacity-60 ${
+              dragging
+                ? "border-brand-cyan-500 bg-brand-cyan-500/5 shadow-lg"
+                : "border-neutral-gray-200 bg-white hover:border-brand-cyan-500 hover:shadow-lg"
+            }`}
           >
             <div className="grid h-16 w-16 place-items-center rounded-full bg-brand-cyan-500/10 text-brand-cyan-500 transition-colors group-hover:bg-brand-cyan-500 group-hover:text-white">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
