@@ -65,7 +65,7 @@ export function LandingScreen({ onLoaded, onBuild }: Props) {
               const f = e.dataTransfer.files[0];
               if (f) handleFile(f);
             }}
-            className={`group flex flex-col items-center gap-5 rounded-[20px] border-2 px-8 py-10 text-center transition-all disabled:opacity-60 ${
+            className={`group flex flex-col items-center gap-5 rounded-[20px] border-2 border-dashed px-8 py-10 text-center transition-all disabled:opacity-60 ${
               dragging
                 ? "border-brand-cyan-500 bg-brand-cyan-500/5 shadow-lg"
                 : "border-neutral-gray-200 bg-white hover:border-brand-cyan-500 hover:shadow-lg"
