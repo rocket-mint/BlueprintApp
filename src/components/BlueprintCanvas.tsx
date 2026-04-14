@@ -338,6 +338,24 @@ function SectionCard({
                     const existingCount = (mm.stageScores[key] ?? []).length;
                     onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${existingCount}:${score}`, isNew: true });
                   }}
+                  onMoveMotivationPoint={(colIndex, scoreIndex, newColIndex) => {
+                    const mm = motivationMapByLane.get(sl.id);
+                    if (!mm || !onUpdateMotivationMap) return;
+                    const oldCol = gridColumns[colIndex];
+                    const newCol = gridColumns[newColIndex];
+                    const oldKey = oldCol.phase?.id ?? oldCol.stageId;
+                    const newKey = newCol.phase?.id ?? newCol.stageId;
+                    if (oldKey === newKey) return;
+                    const oldScores = [...(mm.stageScores[oldKey] ?? [])];
+                    const [movedPoint] = oldScores.splice(scoreIndex, 1);
+                    if (!movedPoint) return;
+                    const newScores = [...(mm.stageScores[newKey] ?? []), movedPoint];
+                    onUpdateMotivationMap(mm.id, {
+                      ...mm.stageScores,
+                      [oldKey]: oldScores,
+                      [newKey]: newScores,
+                    });
+                  }}
                 />
               );
             }
@@ -522,6 +540,7 @@ function MotivationMapGridRow({
   onUpdateMotivationScore,
   onEditMotivationPoint,
   onAddMotivationPoint,
+  onMoveMotivationPoint,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
@@ -531,6 +550,7 @@ function MotivationMapGridRow({
   onUpdateMotivationScore?: (colIndex: number, scoreIndex: number, newScore: number) => void;
   onEditMotivationPoint?: (colIndex: number, scoreIndex: number) => void;
   onAddMotivationPoint?: (colIndex: number, score: number) => void;
+  onMoveMotivationPoint?: (colIndex: number, scoreIndex: number, newColIndex: number) => void;
 }) {
   const title = meta?.title || swimlane.name;
 
@@ -579,6 +599,7 @@ function MotivationMapGridRow({
             onUpdateScore={onUpdateMotivationScore}
             onEditPoint={onEditMotivationPoint}
             onAddPoint={onAddMotivationPoint}
+            onMovePoint={onMoveMotivationPoint}
           />
         </div>
       </div>

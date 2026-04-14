@@ -64,14 +64,20 @@ interface Props {
   onUpdateScore?: (colIndex: number, scoreIndex: number, newScore: number) => void;
   onEditPoint?: (colIndex: number, scoreIndex: number) => void;
   onAddPoint?: (colIndex: number, score: number) => void;
+  /** Called on drag-release when a point is moved to a different column */
+  onMovePoint?: (colIndex: number, scoreIndex: number, newColIndex: number) => void;
 }
 
-export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPoint, onAddPoint }: Props) {
+export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPoint, onAddPoint, onMovePoint }: Props) {
   const gradientId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const hasMoved = useRef(false);
+  // dragXRef holds the latest SVG-X during drag without triggering re-renders on every move
+  const dragXRef = useRef<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
+  // dragX state drives the visual override of the dragged point's X position
+  const [dragX, setDragX] = useState<number | null>(null);
 
   const innerW = MM_VIEW_W - MM_M.left - MM_M.right;
   const innerH = MM_VIEW_H - MM_M.top - MM_M.bottom;
@@ -123,14 +129,14 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     return (relX / rect.width) * MM_VIEW_W;
   }, []);
 
-  // Find closest column index from SVG X coordinate
+  // Find closest column index from SVG X coordinate (nearest-column-center rule)
   const xToColIndex = useCallback((svgX: number) => {
     if (columns.length <= 1) return 0;
     const fraction = (svgX - MM_M.left) / innerW;
     return Math.max(0, Math.min(columns.length - 1, Math.round(fraction * (columns.length - 1))));
   }, [columns.length, innerW]);
 
-  // Click on empty chart space to add a new point
+  // Click on empty chart space to add a new point (nearest column center wins)
   const handleChartClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!editMode || !onAddPoint) return;
     // Don't add if clicking on a circle
@@ -148,7 +154,9 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     e.preventDefault();
     e.stopPropagation();
     hasMoved.current = false;
+    dragXRef.current = null;
     setDragging(i);
+    setDragX(null);
     (e.target as Element).setPointerCapture(e.pointerId);
   }, [editMode, onUpdateScore]);
 
@@ -157,22 +165,59 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     const pt = points[dragging];
     if (!pt) return;
     hasMoved.current = true;
+    // Update Y score in real-time
     const svgY = eventToSvgY(e);
     const newScore = yToScore(svgY);
     onUpdateScore(pt.colIndex, pt.scoreIndex, Math.round(newScore * 100) / 100);
-  }, [dragging, points, onUpdateScore, eventToSvgY, yToScore]);
+    // Track X for visual override and final column commit on release
+    const svgX = eventToSvgX(e);
+    const clampedX = Math.max(MM_M.left, Math.min(MM_VIEW_W - MM_M.right, svgX));
+    dragXRef.current = clampedX;
+    setDragX(clampedX);
+  }, [dragging, points, onUpdateScore, eventToSvgY, eventToSvgX, yToScore]);
 
   const handlePointerUp = useCallback(() => {
+    // Commit X-axis column move on release
+    if (dragging !== null && dragXRef.current !== null && onMovePoint) {
+      const pt = points[dragging];
+      if (pt) {
+        const newColIndex = xToColIndex(dragXRef.current);
+        if (newColIndex !== pt.colIndex) {
+          onMovePoint(pt.colIndex, pt.scoreIndex, newColIndex);
+        }
+      }
+    }
+    dragXRef.current = null;
     setDragging(null);
+    setDragX(null);
+  }, [dragging, points, onMovePoint, xToColIndex]);
+
+  // Cancel: clear without committing a column move
+  const handlePointerCancel = useCallback(() => {
+    dragXRef.current = null;
+    setDragging(null);
+    setDragX(null);
   }, []);
 
   if (columns.length === 0 || points.length === 0) return null;
 
-  const coords = points.map((p) => [p.x, p.y] as const);
-  const linePath = catmullRomPath(coords);
+  // During X drag, override the dragged point's X and sort by X so the
+  // Catmull-Rom spline stays visually natural.
+  const displayCoords = ((): ReadonlyArray<readonly [number, number]> => {
+    if (dragging === null || dragX === null) {
+      return points.map((p) => [p.x, p.y] as const);
+    }
+    const raw = points.map((p, i): readonly [number, number] => [
+      i === dragging ? dragX : p.x,
+      p.y,
+    ]);
+    return [...raw].sort((a, b) => a[0] - b[0]);
+  })();
+
+  const linePath = catmullRomPath(displayCoords);
   const areaPath =
-    coords.length >= 2
-      ? `${linePath} L ${coords[coords.length - 1][0].toFixed(2)} ${baseY} L ${coords[0][0].toFixed(2)} ${baseY} Z`
+    displayCoords.length >= 2
+      ? `${linePath} L ${displayCoords[displayCoords.length - 1][0].toFixed(2)} ${baseY} L ${displayCoords[0][0].toFixed(2)} ${baseY} Z`
       : "";
 
   const hoveredPoint = hovered !== null && dragging === null ? points[hovered] : null;
@@ -188,7 +233,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
         onClick={handleChartClick}
         onPointerMove={dragging !== null ? handlePointerMove : undefined}
         onPointerUp={dragging !== null ? handlePointerUp : undefined}
-        onPointerCancel={dragging !== null ? handlePointerUp : undefined}
+        onPointerCancel={dragging !== null ? handlePointerCancel : undefined}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -239,18 +284,22 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
 
         {/* Data point dots */}
         {points.map((pt, i) => {
-          const isActive = hovered === i || dragging === i;
+          const isDragging = dragging === i;
+          const isActive = hovered === i || isDragging;
+          // Override X during drag so the circle tracks the cursor
+          const cx = isDragging && dragX !== null ? dragX : pt.x;
+          const cy = pt.y;
           return (
             <circle
               key={i}
-              cx={pt.x}
-              cy={pt.y}
+              cx={cx}
+              cy={cy}
               r={isActive ? 10 : 7}
-              fill={dragging === i ? "#5a4fcf" : isActive ? "#6c5ce7" : "#8073ff"}
+              fill={isDragging ? "#5a4fcf" : isActive ? "#6c5ce7" : "#8073ff"}
               stroke={isActive ? "white" : "none"}
               strokeWidth={isActive ? 2.5 : 0}
               className={editMode ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
-              style={{ transition: dragging === i ? "none" : "all 150ms" }}
+              style={{ transition: isDragging ? "none" : "all 150ms" }}
               onMouseEnter={() => setHovered(i)}
               onMouseLeave={() => setHovered(null)}
               onPointerDown={(e) => handlePointerDown(i, e)}
@@ -296,7 +345,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
         <div
           className="pointer-events-none absolute z-20 rounded bg-brand-navy-900 px-2 py-1 text-[11px] font-bold text-white shadow"
           style={{
-            left: `${(points[dragging].x / MM_VIEW_W) * 100}%`,
+            left: `${((dragX ?? points[dragging].x) / MM_VIEW_W) * 100}%`,
             top: `${(points[dragging].y / MM_VIEW_H) * 100}%`,
             transform: "translate(-50%, -140%)",
           }}
