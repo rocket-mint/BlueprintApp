@@ -188,7 +188,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
         onClick={handleChartClick}
         onPointerMove={dragging !== null ? handlePointerMove : undefined}
         onPointerUp={dragging !== null ? handlePointerUp : undefined}
-        onPointerCancel={dragging !== null ? handlePointerCancel : undefined}
+        onPointerCancel={dragging !== null ? handlePointerUp : undefined}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
