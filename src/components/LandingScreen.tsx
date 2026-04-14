@@ -36,7 +36,7 @@ export function LandingScreen({ onLoaded, onBuild }: Props) {
         {/* Branding */}
         <div className="text-center">
           <div className="text-[11px] font-semibold uppercase tracking-[0.25em] text-brand-navy-900/50">
-            concentrix
+            Just A
           </div>
           <h1 className="mt-2 text-4xl font-light leading-tight text-brand-navy-1000 sm:text-5xl">
             Service Blueprint Editor
