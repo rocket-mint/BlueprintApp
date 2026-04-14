@@ -69,6 +69,7 @@ interface Props {
 export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPoint, onAddPoint }: Props) {
   const gradientId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
+  const hasMoved = useRef(false);
   const [hovered, setHovered] = useState<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
 
@@ -146,6 +147,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     if (!editMode || !onUpdateScore) return;
     e.preventDefault();
     e.stopPropagation();
+    hasMoved.current = false;
     setDragging(i);
     (e.target as Element).setPointerCapture(e.pointerId);
   }, [editMode, onUpdateScore]);
@@ -154,6 +156,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     if (dragging === null || !onUpdateScore) return;
     const pt = points[dragging];
     if (!pt) return;
+    hasMoved.current = true;
     const svgY = eventToSvgY(e);
     const newScore = yToScore(svgY);
     onUpdateScore(pt.colIndex, pt.scoreIndex, Math.round(newScore * 100) / 100);
@@ -252,7 +255,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
               onMouseLeave={() => setHovered(null)}
               onPointerDown={(e) => handlePointerDown(i, e)}
               onClick={(e) => {
-                if (editMode && onEditPoint) {
+                if (editMode && onEditPoint && !hasMoved.current) {
                   e.stopPropagation();
                   onEditPoint(pt.colIndex, pt.scoreIndex);
                 }
