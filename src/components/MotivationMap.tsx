@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import type { GridColumn } from "../lib/blueprintLayout";
 import type { MotivationMap as MotivationMapData, MotivationDataPoint } from "../types/blueprint";
 
@@ -64,20 +64,14 @@ interface Props {
   onUpdateScore?: (colIndex: number, scoreIndex: number, newScore: number) => void;
   onEditPoint?: (colIndex: number, scoreIndex: number) => void;
   onAddPoint?: (colIndex: number, score: number) => void;
-  /** Called on drag-release when a point is moved to a different column */
-  onMovePoint?: (colIndex: number, scoreIndex: number, newColIndex: number) => void;
 }
 
-export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPoint, onAddPoint, onMovePoint }: Props) {
+export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPoint, onAddPoint }: Props) {
   const gradientId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const hasMoved = useRef(false);
-  // dragXRef holds the latest SVG-X during drag without triggering re-renders on every move
-  const dragXRef = useRef<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
-  // dragX state drives the visual override of the dragged point's X position
-  const [dragX, setDragX] = useState<number | null>(null);
 
   const innerW = MM_VIEW_W - MM_M.left - MM_M.right;
   const innerH = MM_VIEW_H - MM_M.top - MM_M.bottom;
@@ -154,9 +148,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     e.preventDefault();
     e.stopPropagation();
     hasMoved.current = false;
-    dragXRef.current = null;
     setDragging(i);
-    setDragX(null);
     (e.target as Element).setPointerCapture(e.pointerId);
   }, [editMode, onUpdateScore]);
 
@@ -165,72 +157,22 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     const pt = points[dragging];
     if (!pt) return;
     hasMoved.current = true;
-    // Update Y score in real-time
     const svgY = eventToSvgY(e);
     const newScore = yToScore(svgY);
     onUpdateScore(pt.colIndex, pt.scoreIndex, Math.round(newScore * 100) / 100);
-    // Track X for visual override and final column commit on release
-    const svgX = eventToSvgX(e);
-    const clampedX = Math.max(MM_M.left, Math.min(MM_VIEW_W - MM_M.right, svgX));
-    dragXRef.current = clampedX;
-    setDragX(clampedX);
-  }, [dragging, points, onUpdateScore, eventToSvgY, eventToSvgX, yToScore]);
+  }, [dragging, points, onUpdateScore, eventToSvgY, yToScore]);
 
   const handlePointerUp = useCallback(() => {
-    // Commit X-axis column move on release
-    if (dragging !== null && dragXRef.current !== null && onMovePoint) {
-      const pt = points[dragging];
-      if (pt) {
-        const newColIndex = xToColIndex(dragXRef.current);
-        if (newColIndex !== pt.colIndex) {
-          onMovePoint(pt.colIndex, pt.scoreIndex, newColIndex);
-        }
-      }
-    }
-    dragXRef.current = null;
     setDragging(null);
-    setDragX(null);
-  }, [dragging, points, onMovePoint, xToColIndex]);
-
-  // Cancel: clear without committing a column move
-  const handlePointerCancel = useCallback(() => {
-    dragXRef.current = null;
-    setDragging(null);
-    setDragX(null);
   }, []);
-
-  // Global pointerup — fires regardless of pointer capture, ensuring the drag
-  // is always committed/cleared even if the event doesn't reach the SVG handler.
-  useEffect(() => {
-    if (dragging === null) return;
-    const onUp = () => handlePointerUp();
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", handlePointerCancel);
-    return () => {
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", handlePointerCancel);
-    };
-  }, [dragging, handlePointerUp, handlePointerCancel]);
 
   if (columns.length === 0 || points.length === 0) return null;
 
-  // During X drag, override the dragged point's X and sort by X so the
-  // Catmull-Rom spline stays visually natural.
-  const displayCoords = ((): ReadonlyArray<readonly [number, number]> => {
-    if (dragging === null || dragX === null) {
-      return points.map((p) => [p.x, p.y] as const);
-    }
-    const raw = points.map((p, i): readonly [number, number] => [
-      i === dragging ? dragX : p.x,
-      p.y,
-    ]);
-    return [...raw].sort((a, b) => a[0] - b[0]);
-  })();
-
-  const linePath = catmullRomPath(displayCoords);
+  const coords = points.map((p) => [p.x, p.y] as const);
+  const linePath = catmullRomPath(coords);
   const areaPath =
-    displayCoords.length >= 2
-      ? `${linePath} L ${displayCoords[displayCoords.length - 1][0].toFixed(2)} ${baseY} L ${displayCoords[0][0].toFixed(2)} ${baseY} Z`
+    coords.length >= 2
+      ? `${linePath} L ${coords[coords.length - 1][0].toFixed(2)} ${baseY} L ${coords[0][0].toFixed(2)} ${baseY} Z`
       : "";
 
   const hoveredPoint = hovered !== null && dragging === null ? points[hovered] : null;
@@ -299,14 +241,11 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
         {points.map((pt, i) => {
           const isDragging = dragging === i;
           const isActive = hovered === i || isDragging;
-          // Override X during drag so the circle tracks the cursor
-          const cx = isDragging && dragX !== null ? dragX : pt.x;
-          const cy = pt.y;
           return (
             <circle
               key={i}
-              cx={cx}
-              cy={cy}
+              cx={pt.x}
+              cy={pt.y}
               r={isActive ? 10 : 7}
               fill={isDragging ? "#5a4fcf" : isActive ? "#6c5ce7" : "#8073ff"}
               stroke={isActive ? "white" : "none"}
@@ -358,7 +297,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
         <div
           className="pointer-events-none absolute z-20 rounded bg-brand-navy-900 px-2 py-1 text-[11px] font-bold text-white shadow"
           style={{
-            left: `${((dragX ?? points[dragging].x) / MM_VIEW_W) * 100}%`,
+            left: `${(points[dragging].x / MM_VIEW_W) * 100}%`,
             top: `${(points[dragging].y / MM_VIEW_H) * 100}%`,
             transform: "translate(-50%, -140%)",
           }}
