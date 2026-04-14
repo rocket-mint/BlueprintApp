@@ -3,7 +3,7 @@ import { LandingScreen } from "./components/LandingScreen";
 import { BlueprintWizard } from "./components/BlueprintWizard";
 import { Blueprint } from "./components/Blueprint";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Sidebar } from "./components/Sidebar";
+import { TopNav } from "./components/TopNav";
 import { BlueprintProvider } from "./context/BlueprintContext";
 import { useBlueprint } from "./hooks/useBlueprint";
 import { useDragScroll } from "./lib/useDragScroll";
@@ -68,15 +68,17 @@ function AppContent() {
 
   // ── Editor ──
   return (
-    <div className="flex min-h-screen bg-neutral-sand-50">
-      <Sidebar
-        onDownload={handleDownload}
-        onHome={handleReset}
+    <div className="flex h-screen flex-col bg-neutral-sand-50">
+      <TopNav
+        fileName={fileName}
         editMode={editMode}
         onToggleEditMode={() => setEditMode(!editMode)}
+        onSave={() => setEditMode(false)}
+        onDownload={handleDownload}
+        onHome={handleReset}
       />
 
-      <main ref={dragRef} className="h-screen flex-1 overflow-auto">
+      <main ref={dragRef} className="flex-1 overflow-auto">
         <div className="w-fit min-w-full px-4 py-4 sm:px-6">
           {blueprint && (
             <ErrorBoundary>
