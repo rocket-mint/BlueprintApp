@@ -326,9 +326,15 @@ function SectionCard({
                   }}
                   onAddMotivationPoint={(colIndex, score) => {
                     const mm = motivationMapByLane.get(sl.id);
-                    if (!mm) return;
                     const col = gridColumns[colIndex];
                     const key = col.phase?.id ?? col.stageId;
+                    if (!mm) {
+                      // No motivation map exists yet — open drawer and encode swimlaneId
+                      // so the form can auto-create it on save.
+                      const newId = `mm-${sl.id}`;
+                      onEditEntity({ type: "motivation_point", id: newId, parentId: `${key}:0:${score}:${sl.id}`, isNew: true });
+                      return;
+                    }
                     const existingCount = (mm.stageScores[key] ?? []).length;
                     onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${existingCount}:${score}`, isNew: true });
                   }}

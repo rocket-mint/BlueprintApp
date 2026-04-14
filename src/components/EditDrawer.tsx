@@ -15,6 +15,7 @@ import type {
   Callout,
   Insight,
   CalloutType,
+  MotivationMap as MotivationMapData,
 } from "../types/blueprint";
 import { slugify } from "../utils/idGenerator";
 
@@ -662,11 +663,15 @@ function InsightForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
 // ── Save button ──
 // ── Motivation Point (hover card for a single data point) ──
 function MotivationPointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
-  // id = motivation map ID, parentId = "stageKey:scoreIndex" or "stageKey:scoreIndex:score" for new
+  // id = motivation map ID
+  // parentId = "stageKey:scoreIndex[:score[:swimlaneId]]"
+  //   score    — pre-filled from click position (new points)
+  //   swimlaneId — present only when the motivation map doesn't exist yet and must be created on save
   const parentParts = (parentId ?? "").split(":");
   const stageKey = parentParts[0] || "";
   const scoreIndex = parseInt(parentParts[1] ?? "0", 10);
   const initialScore = parentParts[2] ? parseFloat(parentParts[2]) : undefined;
+  const swimlaneId = parentParts[3] || "";  // non-empty means we must auto-create the map
 
   const mm = bp.motivationMaps.find((m) => m.id === id);
   const points = mm?.stageScores[stageKey] ?? [];
@@ -677,19 +682,25 @@ function MotivationPointForm({ id, bp, dispatch, isNew, parentId, onClose }: For
   const [score, setScore] = useState(String(Math.round((initialScore ?? existing?.score ?? 0.5) * 100)));
 
   const save = () => {
-    if (!mm) return;
     const newScore = Math.max(0, Math.min(100, parseInt(score, 10) || 50)) / 100;
-    const updatedPoints = [...(mm.stageScores[stageKey] ?? [])];
 
+    // If the motivation map doesn't exist yet (wizard-created blueprints), create it first.
+    let targetMm: MotivationMapData | undefined = mm;
+    if (!targetMm) {
+      if (!swimlaneId) return;
+      const newMm: MotivationMapData = { id, swimlaneId, stageScores: {} };
+      dispatch({ type: "ADD_MOTIVATION_MAP", motivationMap: newMm });
+      targetMm = newMm;
+    }
+
+    const updatedPoints = [...(targetMm.stageScores[stageKey] ?? [])];
     if (isNew || scoreIndex >= updatedPoints.length) {
-      // Add new point
       updatedPoints.push({ score: newScore, title: title.trim() || undefined, description: description.trim() || undefined });
     } else {
-      // Update existing point
       updatedPoints[scoreIndex] = { ...updatedPoints[scoreIndex], score: newScore, title: title.trim() || undefined, description: description.trim() || undefined };
     }
 
-    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { stageScores: { ...mm.stageScores, [stageKey]: updatedPoints } } });
+    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: targetMm.id, changes: { stageScores: { ...targetMm.stageScores, [stageKey]: updatedPoints } } });
     onClose();
   };
 
