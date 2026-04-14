@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GridColumn } from "../lib/blueprintLayout";
 import type { MotivationMap as MotivationMapData, MotivationDataPoint } from "../types/blueprint";
 
@@ -198,6 +198,19 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     setDragging(null);
     setDragX(null);
   }, []);
+
+  // Global pointerup — fires regardless of pointer capture, ensuring the drag
+  // is always committed/cleared even if the event doesn't reach the SVG handler.
+  useEffect(() => {
+    if (dragging === null) return;
+    const onUp = () => handlePointerUp();
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
+    return () => {
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+    };
+  }, [dragging, handlePointerUp, handlePointerCancel]);
 
   if (columns.length === 0 || points.length === 0) return null;
 
