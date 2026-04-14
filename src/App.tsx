@@ -4,6 +4,7 @@ import { BlueprintWizard } from "./components/BlueprintWizard";
 import { Blueprint } from "./components/Blueprint";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TopNav } from "./components/TopNav";
+import { Sidebar } from "./components/Sidebar";
 import { BlueprintProvider } from "./context/BlueprintContext";
 import { useBlueprint } from "./hooks/useBlueprint";
 import { useDragScroll } from "./lib/useDragScroll";
@@ -78,15 +79,24 @@ function AppContent() {
         onHome={handleReset}
       />
 
-      <main ref={dragRef} className="flex-1 overflow-auto">
-        <div className="w-fit min-w-full px-4 py-4 sm:px-6">
-          {blueprint && (
-            <ErrorBoundary>
-              <Blueprint />
-            </ErrorBoundary>
-          )}
-        </div>
-      </main>
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar
+          onDownload={handleDownload}
+          onHome={handleReset}
+          editMode={editMode}
+          onToggleEditMode={() => setEditMode(!editMode)}
+        />
+
+        <main ref={dragRef} className="flex-1 overflow-auto">
+          <div className="w-fit min-w-full px-4 py-4 sm:px-6">
+            {blueprint && (
+              <ErrorBoundary>
+                <Blueprint />
+              </ErrorBoundary>
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
