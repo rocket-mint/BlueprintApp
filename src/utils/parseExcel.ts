@@ -10,7 +10,7 @@
 //   7. Insights         -> Insight[]
 //   8. Motivation Maps  -> MotivationMap[]
 
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type {
   Blueprint,
   Section,
@@ -31,16 +31,64 @@ import { buildKeyLookup } from "./dataUtils";
 type Row = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
-// Utility helpers
+// ExcelJS helpers — convert worksheet rows to plain objects (like sheet_to_json)
 // ---------------------------------------------------------------------------
 
-function readSheet(wb: XLSX.WorkBook, candidates: string[]): Row[] | null {
-  const name = wb.SheetNames.find((n) =>
-    candidates.some((c) => n.toLowerCase().trim() === c.toLowerCase()),
-  );
-  if (!name) return null;
-  return XLSX.utils.sheet_to_json<Row>(wb.Sheets[name], { defval: "" });
+/** Unwrap an ExcelJS CellValue to a plain JS primitive. */
+function cellToValue(val: ExcelJS.CellValue): unknown {
+  if (val == null) return "";
+  if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") return val;
+  if (val instanceof Date) return val.toISOString();
+  if (typeof val === "object") {
+    // Formula result
+    if ("result" in val) return cellToValue((val as ExcelJS.CellFormulaValue).result as ExcelJS.CellValue);
+    // Rich text
+    if ("richText" in val) return (val as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join("");
+    // Hyperlink
+    if ("text" in val) return String((val as ExcelJS.CellHyperlinkValue).text ?? "");
+    // Error cell
+    if ("error" in val) return "";
+  }
+  return String(val);
 }
+
+/** Convert a worksheet to an array of header-keyed row objects. */
+function worksheetToJson(ws: ExcelJS.Worksheet): Row[] {
+  const result: Row[] = [];
+  let headers: string[] = [];
+  let headerFound = false;
+
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    // row.values is 1-indexed; slice off the leading undefined at index 0
+    const vals = (row.values as ExcelJS.CellValue[]).slice(1);
+
+    if (!headerFound) {
+      headers = vals.map((v) => String(cellToValue(v) ?? "").trim());
+      headerFound = true;
+      return;
+    }
+
+    const obj: Row = {};
+    for (let i = 0; i < headers.length; i++) {
+      if (headers[i]) obj[headers[i]] = cellToValue(vals[i] ?? null) ?? "";
+    }
+    result.push(obj);
+  });
+
+  return result;
+}
+
+function readSheet(wb: ExcelJS.Workbook, candidates: string[]): Row[] | null {
+  const ws = wb.worksheets.find((w) =>
+    candidates.some((c) => w.name.toLowerCase().trim() === c.toLowerCase()),
+  );
+  if (!ws) return null;
+  return worksheetToJson(ws);
+}
+
+// ---------------------------------------------------------------------------
+// Utility helpers
+// ---------------------------------------------------------------------------
 
 const str = (v: unknown): string => (v == null ? "" : String(v).trim());
 const num = (v: unknown, fallback = 0): number => {
@@ -59,7 +107,7 @@ function parseList(v: unknown): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Motivation score parsing (kept from original)
+// Motivation score parsing
 // ---------------------------------------------------------------------------
 
 function parseMotivationScore(v: unknown): number | undefined {
@@ -86,7 +134,6 @@ function parseMotivationScore(v: unknown): number | undefined {
  * Supports two formats:
  *   Plain:  "0.30, 0.45"
  *   Rich:   "0.30|Title|Description, 0.45|Title|Desc"
- * Falls back to plain numbers when no `|` is present.
  */
 function parseMotivationDataPoints(v: unknown): MotivationDataPoint[] {
   if (v == null || v === "") return [];
@@ -97,24 +144,18 @@ function parseMotivationDataPoints(v: unknown): MotivationDataPoint[] {
   const raw = String(v).trim();
   if (!raw) return [];
 
-  // Detect rich format (contains `|`)
   if (raw.includes("|")) {
     const out: MotivationDataPoint[] = [];
     for (const part of raw.split(/[,;]/)) {
       const segments = part.split("|").map((s) => s.trim());
       const score = parseMotivationScore(segments[0]);
       if (score !== undefined) {
-        out.push({
-          score,
-          title: segments[1] || undefined,
-          description: segments[2] || undefined,
-        });
+        out.push({ score, title: segments[1] || undefined, description: segments[2] || undefined });
       }
     }
     return out;
   }
 
-  // Plain format — just numbers
   const out: MotivationDataPoint[] = [];
   for (const part of raw.split(/[,;]/)) {
     const n = parseMotivationScore(part.trim());
@@ -128,21 +169,13 @@ function parseMotivationDataPoints(v: unknown): MotivationDataPoint[] {
 // ---------------------------------------------------------------------------
 
 function parseSwimlaneType(v: unknown): SwimlaneType {
-  const s = String(v ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-  if (s === "motivation_map" || s === "motivation" || s === "motivationmap") {
-    return "motivation_map";
-  }
+  const s = String(v ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "motivation_map" || s === "motivation" || s === "motivationmap") return "motivation_map";
   return "moments";
 }
 
 function parseCalloutType(v: unknown): CalloutType {
-  const s = String(v ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
+  const s = String(v ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   const valid: CalloutType[] = ["pain_point", "opportunity", "highlight", "question", "note"];
   if (valid.includes(s as CalloutType)) return s as CalloutType;
   if (s.includes("pain")) return "pain_point";
@@ -158,7 +191,8 @@ function parseCalloutType(v: unknown): CalloutType {
 
 export async function parseExcel(file: File): Promise<Blueprint> {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array" });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
 
   // Read all sheets (with fallback name variants)
   const sectionsRaw = readSheet(wb, ["Sections", "Section"]) ?? [];
@@ -170,15 +204,10 @@ export async function parseExcel(file: File): Promise<Blueprint> {
   const insightsRaw = readSheet(wb, ["Insights", "Insight"]) ?? [];
   const motivationMapsRaw = readSheet(wb, ["Motivation Maps", "Motivation Map"]) ?? [];
 
-  if (stagesRaw.length === 0) {
-    throw new Error("Missing or empty 'Journey Stages' sheet");
-  }
-  if (swimlanesRaw.length === 0) {
-    throw new Error("Missing or empty 'Swimlanes' sheet");
-  }
+  if (stagesRaw.length === 0) throw new Error("Missing or empty 'Journey Stages' sheet");
+  if (swimlanesRaw.length === 0) throw new Error("Missing or empty 'Swimlanes' sheet");
 
   // ---- Sections ----
-  // If no Sections sheet, create a default section so stages have a parent.
   let sections: Section[];
   if (sectionsRaw.length > 0) {
     sections = sectionsRaw
@@ -186,12 +215,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
         const name = str(r["Section Name"] ?? r["Name"] ?? r["name"]);
         const explicitId = str(r["Section ID"] ?? r["id"]);
         const id = explicitId || (name ? slugify(name) : `section_${i + 1}`);
-        return {
-          id,
-          name,
-          description: str(r["Description"]) || undefined,
-          order: num(r["Order"], i + 1),
-        };
+        return { id, name, description: str(r["Description"]) || undefined, order: num(r["Order"], i + 1) };
       })
       .filter((s) => s.id && s.name)
       .sort((a, b) => a.order - b.order);
@@ -206,17 +230,10 @@ export async function parseExcel(file: File): Promise<Blueprint> {
       const explicitId = str(r["Stage ID"] ?? r["id"]);
       const id = explicitId || (name ? slugify(name) : `stage_${i + 1}`);
       const rawSectionId = str(r["Section ID"] ?? r["Section"] ?? r["section"]);
-      // Resolve section by ID or name; fall back to first section
       const sectionId = rawSectionId
         ? (buildKeyLookup(sections).get(rawSectionId.toLowerCase()) ?? sections[0]?.id ?? "default")
         : (sections[0]?.id ?? "default");
-      return {
-        id,
-        name,
-        sectionId,
-        description: str(r["Description"]) || undefined,
-        order: num(r["Order"], i + 1),
-      };
+      return { id, name, sectionId, description: str(r["Description"]) || undefined, order: num(r["Order"], i + 1) };
     })
     .filter((s) => s.id && s.name)
     .sort((a, b) => a.order - b.order);
@@ -258,9 +275,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
       const name = str(r["Swimlane Name"] ?? r["Name"] ?? r["name"]);
       const id = explicitId || (name ? slugify(name) : `swimlane_${i + 1}`);
       const rawSectionId = str(r["Section ID"] ?? r["Section"] ?? r["section"]);
-      const sectionId = rawSectionId
-        ? resolveSection(rawSectionId)
-        : "";
+      const sectionId = rawSectionId ? resolveSection(rawSectionId) : "";
       const rawPhaseId = str(r["Phase ID"] ?? r["Phase"] ?? r["phase"]);
       return {
         id,
@@ -275,18 +290,12 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     .filter((s) => s.id && s.name)
     .sort((a, b) => a.order - b.order);
 
-  // If no swimlane has a sectionId, duplicate them into every section
   if (rawSwimlanes.every((s) => !s.sectionId)) {
     swimlanes = [];
     let order = 1;
     for (const sec of sections) {
       for (const sl of rawSwimlanes) {
-        swimlanes.push({
-          ...sl,
-          id: `${sl.id}_${sec.id}`,
-          sectionId: sec.id,
-          order: order++,
-        });
+        swimlanes.push({ ...sl, id: `${sl.id}_${sec.id}`, sectionId: sec.id, order: order++ });
       }
     }
   } else {
@@ -296,7 +305,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     }));
   }
 
-  // Build lookup maps for touchpoints / callouts / insights references
+  // Build lookup maps
   const swimlaneKeyLookup = buildKeyLookup(swimlanes);
   const phaseKeyLookup = buildKeyLookup(phases);
 
@@ -304,16 +313,11 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     const key = str(v).toLowerCase();
     return swimlaneKeyLookup.get(key) ?? str(v);
   };
-  const resolvePhaseIds = (v: unknown): string[] => {
-    const parts = parseList(v);
-    return parts
+  const resolvePhaseIds = (v: unknown): string[] =>
+    parseList(v)
       .map((p) => phaseKeyLookup.get(p.toLowerCase()) ?? p)
       .filter(Boolean);
-  };
-  const resolvePhaseId = (v: unknown): string | undefined => {
-    const ids = resolvePhaseIds(v);
-    return ids[0] || undefined;
-  };
+  const resolvePhaseId = (v: unknown): string | undefined => resolvePhaseIds(v)[0] || undefined;
 
   // ---- Touchpoints ----
   const touchpoints: Touchpoint[] = touchpointsRaw
@@ -376,10 +380,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     })
     .filter((ins) => ins.id && ins.stageId && ins.title);
 
-  // ---- Fallback: extract motivation scores from Stages sheet ----
-  // The old format stored "Motivation Score" on each stage row. We parse
-  // them here so they can be injected into MotivationMap.stageScores when
-  // the Motivation Maps sheet doesn't have per-stage columns.
+  // ---- Fallback: motivation scores from Stages sheet ----
   const stageScoresFromStagesSheet: Record<string, MotivationDataPoint[]> = {};
   for (let i = 0; i < stagesRaw.length; i++) {
     const r = stagesRaw[i];
@@ -391,7 +392,6 @@ export async function parseExcel(file: File): Promise<Blueprint> {
   }
 
   // ---- Motivation Maps ----
-  // Supports per-stage columns with plain numbers or rich "score|title|desc" format.
   const motivationMaps: MotivationMap[] = motivationMapsRaw
     .map((r, i) => {
       const explicitId = str(r["Map ID"] ?? r["id"]);
@@ -399,22 +399,16 @@ export async function parseExcel(file: File): Promise<Blueprint> {
       const slId = resolveSwimlane(r["Swimlane ID"] ?? r["Swimlane"]);
 
       const stageScores: Record<string, MotivationDataPoint[]> = {};
-
-      // First, try per-stage columns (column name matches stage ID or name)
       for (const stage of journeyStages) {
         const colVal = r[stage.id] ?? r[stage.name];
-        if (colVal != null && colVal !== "") {
-          stageScores[stage.id] = parseMotivationDataPoints(colVal);
-        }
+        if (colVal != null && colVal !== "") stageScores[stage.id] = parseMotivationDataPoints(colVal);
       }
 
-      // If no per-stage columns found, try a "Scores" column
       if (Object.keys(stageScores).length === 0) {
         const rawScores = str(r["Scores"] ?? r["Motivation Scores"] ?? r["Motivation Score"]);
         if (rawScores) {
           const points = parseMotivationDataPoints(rawScores);
           if (points.length > 0) {
-            // Distribute across stages in order
             journeyStages.forEach((stage, idx) => {
               if (idx < points.length) stageScores[stage.id] = [points[idx]];
             });
@@ -422,10 +416,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
         }
       }
 
-      // Final fallback: use scores from the Stages sheet
-      if (Object.keys(stageScores).length === 0) {
-        Object.assign(stageScores, stageScoresFromStagesSheet);
-      }
+      if (Object.keys(stageScores).length === 0) Object.assign(stageScores, stageScoresFromStagesSheet);
 
       return {
         id,
@@ -440,17 +431,10 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     })
     .filter((m) => m.swimlaneId);
 
-  // If no motivation map rows were parsed but we have scores from the stages
-  // sheet and a motivation_map swimlane, auto-create a motivation map entry.
   if (motivationMaps.length === 0 && Object.keys(stageScoresFromStagesSheet).length > 0) {
     const mmSwimlane = swimlanes.find((s) => s.type === "motivation_map");
     if (mmSwimlane) {
-      motivationMaps.push({
-        id: "mm_auto",
-        swimlaneId: mmSwimlane.id,
-        title: "Motivation Map",
-        stageScores: { ...stageScoresFromStagesSheet },
-      });
+      motivationMaps.push({ id: "mm_auto", swimlaneId: mmSwimlane.id, title: "Motivation Map", stageScores: { ...stageScoresFromStagesSheet } });
     }
   }
 
