@@ -80,12 +80,7 @@ function AppContent() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          onDownload={handleDownload}
-          onHome={handleReset}
-          editMode={editMode}
-          onToggleEditMode={() => setEditMode(!editMode)}
-        />
+        <Sidebar editMode={editMode} />
 
         <main ref={dragRef} className="flex-1 overflow-auto">
           <div className="w-fit min-w-full px-4 py-4 sm:px-6">

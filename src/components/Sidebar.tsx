@@ -3,10 +3,7 @@
 import { useState } from "react";
 
 interface SidebarProps {
-  onDownload?: () => void;
-  onHome?: () => void;
   editMode?: boolean;
-  onToggleEditMode?: () => void;
 }
 
 const DEFAULTS = {
@@ -52,7 +49,7 @@ function EditableText({
   );
 }
 
-export function Sidebar({ onDownload, onHome, editMode, onToggleEditMode }: SidebarProps) {
+export function Sidebar({ editMode }: SidebarProps) {
   const [title, setTitle] = useState(DEFAULTS.title);
   const [intro, setIntro] = useState(DEFAULTS.intro);
   const [howToUse, setHowToUse] = useState(DEFAULTS.howToUse);
@@ -164,56 +161,6 @@ export function Sidebar({ onDownload, onHome, editMode, onToggleEditMode }: Side
         </Section>
       </div>
 
-      {/* Spacer to push download button to bottom */}
-      <div className="flex-1" />
-
-      {onToggleEditMode && (
-        <button
-          type="button"
-          onClick={onToggleEditMode}
-          className={`mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition ${
-            editMode
-              ? "border-2 border-brand-purple-500 bg-brand-purple-500/10 text-brand-purple-500"
-              : "border border-neutral-gray-200 bg-white text-neutral-gray-700 hover:bg-neutral-gray-50"
-          }`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
-          {editMode ? "Editing" : "Edit Mode"}
-        </button>
-      )}
-
-      {onDownload && (
-        <button
-          type="button"
-          onClick={onDownload}
-          title="Download a self-contained, read-only HTML copy of this blueprint"
-          className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-brand-cyan-500 bg-brand-cyan-500 px-3 py-2 text-xs font-semibold text-white hover:border-brand-blue-500 hover:bg-brand-blue-500"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Download as HTML
-        </button>
-      )}
-
-      {onHome && (
-        <button
-          type="button"
-          onClick={onHome}
-          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-neutral-gray-200 bg-white px-3 py-2 text-xs font-medium text-neutral-gray-700 hover:bg-neutral-gray-50"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-          Home
-        </button>
-      )}
     </aside>
   );
 }
