@@ -29,7 +29,13 @@ export function createSampleBlueprint(): Blueprint {
       { id: "stage-onboard",  name: "Onboarding",     sectionId: "section-purchase", description: "Getting the customer set up and successful.", order: 5 },
     ],
 
-    phases: [],
+    phases: [
+      // A phase group spans all stages in a section — one phase cell per stage.
+      // Use the same groupId to link them into a single phase row.
+      { id: "phase-aware-digital",    name: "Digital Discovery",  stageId: "stage-aware",    groupId: "phase-group-1", description: "The customer finds you through digital channels.", order: 1 },
+      { id: "phase-consider-digital", name: "Online Research",    stageId: "stage-consider", groupId: "phase-group-1", description: "The customer digs deeper online before deciding.", order: 2 },
+      { id: "phase-decide-digital",   name: "Final Comparison",   stageId: "stage-decide",   groupId: "phase-group-1", description: "The customer makes their final choice. Add or rename these phases to reflect your journey.", order: 3 },
+    ],
 
     swimlanes: [
       {

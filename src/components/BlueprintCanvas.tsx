@@ -422,7 +422,7 @@ function SectionCard({
               {/* + Add Phase Group */}
               {editMode && (
                 <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="flex gap-2 pt-3">
-                  <AddButton type="phase" label="Phase Group" parentId={section.id} onClick={onEditEntity} />
+                  <AddButton type="phase" label="Phase Group" parentId={sectionStages[0]?.id ?? ""} onClick={onEditEntity} />
                 </div>
               )}
             </>
