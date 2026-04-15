@@ -359,6 +359,9 @@ function SectionCard({
 
           return (
             <>
+              {/* Orphan swimlanes first — so new phase groups always appear at the bottom */}
+              {orphanSwimlanes.map((sl) => renderSwimlane(sl))}
+
               {groupIds.map((gid) => {
                 const groupPhases = sectionPhases.filter((p) => (p.groupId ?? p.id) === gid);
                 const groupSwimlanes = swimlanesByGroup.get(gid) ?? [];
@@ -415,9 +418,6 @@ function SectionCard({
                   </React.Fragment>
                 );
               })}
-
-              {/* Orphan swimlanes (no phase group) */}
-              {orphanSwimlanes.map((sl) => renderSwimlane(sl))}
 
               {/* + Add Phase Group */}
               {editMode && (
