@@ -450,8 +450,27 @@ function SwimlaneForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps)
       <Field label="Section">
         <SelectInput value={sectionId} onChange={setSectionId} options={bp.sections.map((s) => ({ value: s.id, label: s.name }))} />
       </Field>
-      <Field label="Phase">
-        <SelectInput value={phaseId} onChange={setPhaseId} options={[{ value: "", label: "(No phase)" }, ...bp.phases.map((p) => ({ value: p.id, label: p.name }))]} />
+      <Field label="Phase group">
+        {(() => {
+          // Deduplicate phases by groupId — one option per phase group
+          const seen = new Set<string>();
+          const groupOptions: Array<{ value: string; label: string }> = [];
+          for (const p of bp.phases) {
+            const gid = p.groupId ?? p.id;
+            if (!seen.has(gid)) {
+              seen.add(gid);
+              // Use the first phase's name as the group label
+              groupOptions.push({ value: gid, label: p.name + (p.groupId ? " (group)" : "") });
+            }
+          }
+          return (
+            <SelectInput
+              value={phaseId}
+              onChange={setPhaseId}
+              options={[{ value: "", label: "(No phase group)" }, ...groupOptions]}
+            />
+          );
+        })()}
       </Field>
       <Field label="Type">
         <SelectInput value={type} onChange={setType} options={[{ value: "moments", label: "Moments (touchpoints)" }, { value: "motivation_map", label: "Motivation Map" }]} />

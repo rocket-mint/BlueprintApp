@@ -267,14 +267,19 @@ function SectionCard({
 
           const groupIds = [...new Set(sectionPhases.map((p) => p.groupId ?? p.id))];
 
-          // Group swimlanes by phaseId (which references groupId)
+          // Normalize phase.id → groupId so swimlanes referencing either work
+          const phaseToGroup = new Map<string, string>();
+          for (const p of sectionPhases) phaseToGroup.set(p.id, p.groupId ?? p.id);
+
+          // Group swimlanes by resolved groupId
           const swimlanesByGroup = new Map<string, typeof swimlanes>();
           const orphanSwimlanes: typeof swimlanes = [];
           for (const sl of swimlanes) {
             if (sl.phaseId) {
-              const arr = swimlanesByGroup.get(sl.phaseId) ?? [];
+              const gid = phaseToGroup.get(sl.phaseId) ?? sl.phaseId;
+              const arr = swimlanesByGroup.get(gid) ?? [];
               arr.push(sl);
-              swimlanesByGroup.set(sl.phaseId, arr);
+              swimlanesByGroup.set(gid, arr);
             } else {
               orphanSwimlanes.push(sl);
             }
