@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Touchpoint } from "../types/blueprint";
 import type { Media } from "./MediaModal";
 import type { EditingEntity, EditableEntityType } from "../context/BlueprintContext";
+import { useBlueprint } from "../hooks/useBlueprint";
 import { DeleteButton } from "./EditControls";
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
 }
 
 export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteEntity }: Props) {
+  const { state } = useBlueprint();
+  const isEditing = state.editingEntity?.id === tp.id;
   const [imgError, setImgError] = useState(false);
   const [hovered, setHovered] = useState(false);
   const hasHoverCard = Boolean(tp.hoverTitle || tp.hoverDescription);
@@ -48,7 +51,7 @@ export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteE
 
   return (
     <div
-      className="group/tp relative flex h-full min-h-[80px] min-w-0 flex-col gap-1 overflow-visible rounded-[10px] border-2 border-neutral-gray-200 bg-white p-3.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.06)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.1)]"
+      className={`group/tp relative flex h-full min-h-[80px] min-w-0 flex-col gap-1 overflow-visible rounded-[10px] border-2 bg-white p-3.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.06)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.1)] ${isEditing ? "border-brand-cyan-500 ring-2 ring-brand-cyan-500" : "border-neutral-gray-200"}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -59,9 +62,9 @@ export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteE
             type="button"
             onClick={(e) => { e.stopPropagation(); onEditEntity({ type: "touchpoint", id: tp.id }); }}
             title="Edit touchpoint"
-            className="grid h-5 w-5 place-items-center rounded-full bg-brand-cyan-500/10 text-brand-cyan-500 shadow ring-1 ring-brand-cyan-500/30 hover:bg-brand-cyan-500 hover:text-white"
+            className="grid h-8 w-8 place-items-center rounded-full bg-brand-cyan-500/10 text-brand-cyan-500 shadow ring-1 ring-brand-cyan-500/30 hover:bg-brand-cyan-500 hover:text-white"
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
           </button>

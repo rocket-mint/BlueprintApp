@@ -17,7 +17,7 @@ import type {
   MotivationMap as MotivationMapData,
 } from "../types/blueprint";
 import type { Media } from "./MediaModal";
-import { SwimlaneCell } from "./SwimlaneCell";
+import { TouchpointCard } from "./TouchpointCard";
 import { CalloutBadge } from "./CalloutBadge";
 import { MotivationMap, MM_LEVELS, MM_VIEW_H, MM_M } from "./MotivationMap";
 import { InsightsSection } from "./InsightsSection";
@@ -199,6 +199,7 @@ interface Props {
   onToggleCollapse: (id: string) => void;
   onToggleSectionCollapse: (id: string) => void;
   onTogglePhaseGroupCollapse: (id: string) => void;
+  editingEntityId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +223,7 @@ function SectionCard({
   onToggleSectionCollapse,
   onTogglePhaseGroupCollapse,
   collapsedPhaseGroups,
+  editingEntityId,
 }: {
   section: Section;
   sectionStages: JourneyStage[];
@@ -240,6 +242,7 @@ function SectionCard({
   onToggleCollapse: (id: string) => void;
   onToggleSectionCollapse: (id: string) => void;
   onTogglePhaseGroupCollapse: (id: string) => void;
+  editingEntityId?: string | null;
 }) {
   // ── Grid layout ──
   const gridColumns = useMemo<GridColumn[]>(
@@ -459,7 +462,7 @@ function SectionCard({
             type="button"
             onClick={() => onToggleCollapse(sl.id)}
             title={`Expand ${sl.name}`}
-            className={`mt-1 flex w-full items-center gap-2 rounded-xl border border-neutral-gray-100 px-4 py-2 text-left text-neutral-gray-700 hover:bg-neutral-gray-50 ${movedClass}`}
+            className={`mt-1 flex w-full items-center gap-2 rounded-xl border border-neutral-gray-100 px-4 py-2 text-left text-neutral-gray-700 hover:bg-neutral-gray-50 ${movedClass} ${editingEntityId === sl.id ? "ring-2 ring-brand-cyan-500" : ""}`}
           >
             {dragProps && (
               <GripHandle onDragStart={dragProps.onDragStart} onDragEnd={dragProps.onDragEnd} />
@@ -512,6 +515,7 @@ function SectionCard({
             onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${existingCount}:${score}`, isNew: true });
           }}
           dragProps={dragProps}
+          editingEntityId={editingEntityId}
         />
       );
     }
@@ -537,6 +541,7 @@ function SectionCard({
         dragProps={dragProps}
         groupPhases={groupPhases}
         phaseMinWidths={phaseMinWidths}
+        editingEntityId={editingEntityId}
       />
     );
   }
@@ -544,7 +549,7 @@ function SectionCard({
   // ── Collapsed section ──
   if (collapsed) {
     return (
-      <section className="rounded-[20px] bg-white shadow-[0_2px_10px_0_rgba(15,23,36,0.05)]">
+      <section className={`rounded-[20px] bg-white shadow-[0_2px_10px_0_rgba(15,23,36,0.05)] ${editingEntityId === section.id ? "ring-2 ring-brand-cyan-500" : ""}`}>
         <button
           type="button"
           onClick={() => onToggleSectionCollapse(section.id)}
@@ -566,7 +571,7 @@ function SectionCard({
 
   return (
     <section
-      className="rounded-[20px] bg-white px-6 py-10 shadow-[0_2px_10px_0_rgba(15,23,36,0.05)] sm:px-10 sm:py-12"
+      className={`rounded-[20px] bg-white px-6 py-10 shadow-[0_2px_10px_0_rgba(15,23,36,0.05)] sm:px-10 sm:py-12 ${editingEntityId === section.id ? "ring-2 ring-brand-cyan-500" : ""}`}
       style={{ minWidth: sectionMinWidth }}
     >
       {/* Section title */}
@@ -620,13 +625,13 @@ function SectionCard({
         {hasStageGroups && (
           <div style={{ display: "contents" }}>
             {/* Col 1: label */}
-            <div style={{ gridColumn: 1 }} className="flex items-center pr-2">
+            <div style={{ gridColumn: 1 }} className="flex items-center justify-end pr-2">
               {editMode ? (
                 <input
                   type="text"
                   value={section.stageGroupLabel ?? "Group"}
                   onChange={(e) => onUpdateSection?.(section.id, { stageGroupLabel: e.target.value })}
-                  className="w-full border-b border-neutral-gray-300 bg-transparent text-[14px] font-bold capitalize text-brand-navy-1000 outline-none focus:border-brand-cyan-500"
+                  className="w-full rounded-md border border-neutral-gray-200 bg-white px-2 py-1 text-[14px] font-bold capitalize text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
                   placeholder="Group"
                 />
               ) : (
@@ -675,13 +680,13 @@ function SectionCard({
 
         {/* ── Stage headers ── */}
         <div style={{ display: "contents" }}>
-          <div className="flex items-center pr-2">
+          <div className="flex items-center justify-end pr-2">
             {editMode ? (
               <input
                 type="text"
                 value={section.stageLabel ?? "Stage"}
                 onChange={(e) => onUpdateSection?.(section.id, { stageLabel: e.target.value })}
-                className="w-full border-b border-neutral-gray-300 bg-transparent text-[14px] font-bold capitalize text-brand-navy-1000 outline-none focus:border-brand-cyan-500"
+                className="w-full rounded-md border border-neutral-gray-200 bg-white px-2 py-1 text-[14px] font-bold capitalize text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
                 placeholder="Stage"
               />
             ) : (
@@ -693,7 +698,7 @@ function SectionCard({
           {sectionStages.map((s) => (
             <div
               key={s.id}
-              className="group flex items-center justify-center rounded-md px-4 py-3"
+              className={`group flex items-center justify-center rounded-md px-4 py-3 ${editingEntityId === s.id ? "ring-2 ring-brand-cyan-500" : ""}`}
               style={{ backgroundColor: s.bgColor || "#E5E7EB", color: s.textColor || "#0F1724" }}
               title={s.description ?? undefined}
             >
@@ -753,7 +758,7 @@ function SectionCard({
                 <div
                   style={{ gridColumn: 1 }}
                   className={[
-                    "flex items-center gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
+                    "flex items-center justify-end gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
                     isGroupDragTarget ? "border-b-2 border-brand-cyan-500" : "",
                     isGroupJustMoved  ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
                   ].join(" ")}
@@ -785,7 +790,7 @@ function SectionCard({
                       type="text"
                       value={item.phases[0]?.groupLabel ?? "Phase"}
                       onChange={(e) => onUpdatePhaseGroupLabel?.(item.id, e.target.value, item.phases)}
-                      className="w-full border-b border-neutral-gray-300 bg-transparent text-[14px] font-bold capitalize text-brand-navy-1000 outline-none focus:border-brand-cyan-500"
+                      className="w-full rounded-md border border-neutral-gray-200 bg-white px-2 py-1 text-[14px] font-bold capitalize text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
                       placeholder="Phase"
                     />
                   ) : (
@@ -807,7 +812,7 @@ function SectionCard({
                         <div
                           key={phase.id}
                           style={{ flex: "0 0 auto", minWidth: phaseMinWidths.get(phase.id) ?? CARD_W, backgroundColor: phase.bgColor || "#0F1724", color: phase.textColor || "#FFFFFF" }}
-                          className="group flex items-center justify-center rounded-md px-4 py-3"
+                          className={`group flex items-center justify-center rounded-md px-4 py-3 ${editingEntityId === phase.id ? "ring-2 ring-brand-cyan-500" : ""}`}
                           title={phase.description ?? undefined}
                         >
                           <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight">
@@ -900,6 +905,7 @@ function MomentsGridRow({
   dragProps,
   groupPhases,
   phaseMinWidths,
+  editingEntityId,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
@@ -917,14 +923,16 @@ function MomentsGridRow({
   groupPhases?: Phase[];
   /** Per-phase minimum pixel widths — must match the phase header row so pills and sub-cells align. */
   phaseMinWidths?: Map<string, number>;
+  editingEntityId?: string | null;
 }) {
   return (
     <div style={{ display: "contents" }}>
       <div
         className={[
-          "group flex items-start gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
+          "group flex items-start justify-end gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
           dragProps?.isDragTarget ? "border-b-2 border-brand-cyan-500" : "",
           isJustMoved ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
+          editingEntityId === swimlane.id ? "ring-2 ring-brand-cyan-500" : "",
         ].join(" ")}
         style={{ gridColumn: 1 }}
         onDragOver={dragProps?.onDragOver}
@@ -938,7 +946,7 @@ function MomentsGridRow({
           type="button"
           onClick={onToggleCollapse}
           title={`Collapse ${swimlane.name}`}
-          className="flex flex-1 items-start gap-1 rounded text-left transition-opacity hover:opacity-70"
+          className="flex flex-1 items-start justify-end gap-1 rounded text-right transition-opacity hover:opacity-70"
         >
           <span className="mt-0.5 text-neutral-gray-500"><Chevron open size={10} /></span>
           <span className="text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">
@@ -958,71 +966,90 @@ function MomentsGridRow({
         const stagePhases = groupPhases?.filter((p) => p.stageId === col.stageId);
 
         if (stagePhases && stagePhases.length > 0) {
-          const spanning = spanningCalloutsFor(callouts, swimlane.id, col.stageId);
-          const multiPhase = multiPhaseCalloutsFor(callouts, swimlane.id, col.stageId);
           const PHASE_GAP = 6; // matches gap-1.5
+
+          // Collect all touchpoints across phases into one flat row
+          const allPhaseTouchpoints = stagePhases.flatMap((phase) =>
+            touchpointsForColumn(touchpoints, swimlane.id, col, phase.id),
+          );
+
+          // Collect all callouts: single-phase, multi-phase, and spanning
+          const singlePhaseCallouts = stagePhases.flatMap((phase) =>
+            calloutsForColumn(callouts, swimlane.id, col, phase.id),
+          );
+          const multiPhase = multiPhaseCalloutsFor(callouts, swimlane.id, col.stageId);
+          const spanning = spanningCalloutsFor(callouts, swimlane.id, col.stageId);
+          const allCallouts = [...singlePhaseCallouts, ...multiPhase, ...spanning];
+
+          // Compute total width of all phases for spanning callouts
+          let totalPhaseWidth = 0;
+          for (let k = 0; k < stagePhases.length; k++) {
+            totalPhaseWidth += phaseMinWidths?.get(stagePhases[k].id) ?? 176;
+            if (k > 0) totalPhaseWidth += PHASE_GAP;
+          }
+
           return (
-            <div key={i} className="flex min-w-0 flex-col gap-1 pt-2">
-              {/* Per-phase sub-cells — touchpoints + single-phase callouts */}
-              <div className="flex gap-1.5">
-                {stagePhases.map((phase) => (
-                  <div
-                    key={phase.id}
-                    style={{ flex: "0 0 auto", minWidth: phaseMinWidths?.get(phase.id) ?? 176 }}
-                    className="flex flex-col gap-1 overflow-visible"
-                  >
-                    <SwimlaneCell
-                      touchpoints={touchpointsForColumn(touchpoints, swimlane.id, col, phase.id)}
-                      callouts={calloutsForColumn(callouts, swimlane.id, col, phase.id)}
-                      touchpointMedia={touchpointMedia}
-                      editMode={editMode}
-                      onEditEntity={onEditEntity}
-                      onDeleteEntity={onDeleteEntity}
-                    />
-                    {editMode && (
-                      <div className="flex gap-1">
-                        <AddButton
-                          type="touchpoint"
-                          label="Touchpoint"
-                          parentId={`${col.stageId}:${swimlane.id}:${phase.id}`}
-                          onClick={onEditEntity}
-                        />
-                        <AddButton
-                          type="callout"
-                          label="Callout"
-                          parentId={`${col.stageId}:${swimlane.id}`}
-                          onClick={onEditEntity}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {editMode && (
-                  // Invisible spacer matching the "+ Phase" AddButton width in the header above.
-                  <div className="pointer-events-none shrink-0 opacity-0" aria-hidden="true">
-                    <AddButton type="phase" label="Phase" parentId="" onClick={() => {}} />
-                  </div>
+            <div key={i} className="flex min-w-0 flex-col gap-2 pt-2">
+              {/* Touchpoints — grouped by phase, + button after each phase's last touchpoint */}
+              <div className="flex items-stretch gap-2 overflow-visible">
+                {stagePhases.map((phase) => {
+                  const phaseTps = touchpointsForColumn(touchpoints, swimlane.id, col, phase.id);
+                  return (
+                    <React.Fragment key={phase.id}>
+                      {phaseTps.map((tp) => (
+                        <div key={tp.id} className="w-[176px] shrink-0 overflow-visible [&:hover]:z-20">
+                          <TouchpointCard
+                            tp={tp}
+                            override={touchpointMedia[tp.id]}
+                            editMode={editMode}
+                            onEditEntity={onEditEntity}
+                            onDeleteEntity={onDeleteEntity}
+                          />
+                        </div>
+                      ))}
+                      {editMode && (
+                        <button
+                          type="button"
+                          onClick={() => onEditEntity({ type: "touchpoint", id: `new_touchpoint_${Date.now().toString(36)}`, parentId: `${col.stageId}:${swimlane.id}:${phase.id}`, isNew: true })}
+                          title={`Add touchpoint to ${phase.name}`}
+                          className="flex min-h-[80px] w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-brand-cyan-500/40 bg-brand-cyan-500/5 text-lg font-bold text-brand-cyan-500 transition hover:border-brand-cyan-500 hover:bg-brand-cyan-500/10"
+                        >
+                          +
+                        </button>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+                {allPhaseTouchpoints.length === 0 && !editMode && (
+                  <div className="min-h-[60px]" />
                 )}
               </div>
-              {/* Multi-phase callouts — each spans the columns of its matched phases */}
-              {multiPhase.length > 0 && (
+              {/* Callouts — separate row, each with width matching its assigned phases */}
+              {allCallouts.length > 0 && (
                 <div className="relative flex flex-col gap-1">
-                  {multiPhase.map((c) => {
-                    const matched = new Set(c.phaseIds ?? []);
-                    const firstIdx = stagePhases.findIndex((p) => matched.has(p.id));
-                    const lastIdx  = stagePhases.reduce((last, p, idx) => (matched.has(p.id) ? idx : last), -1);
-                    if (firstIdx === -1 || lastIdx === -1) return null;
-                    let offsetLeft = 0;
-                    for (let k = 0; k < firstIdx; k++) {
-                      offsetLeft += (phaseMinWidths?.get(stagePhases[k].id) ?? 176) + PHASE_GAP;
+                  {allCallouts.map((c) => {
+                    const ids = c.phaseIds;
+                    let calloutWidth = totalPhaseWidth;
+                    let calloutLeft = 0;
+
+                    if (ids && ids.length > 0 && ids.length < stagePhases.length) {
+                      const matched = new Set(ids);
+                      const firstIdx = stagePhases.findIndex((p) => matched.has(p.id));
+                      const lastIdx  = stagePhases.reduce((last, p, idx) => (matched.has(p.id) ? idx : last), -1);
+                      if (firstIdx === -1 || lastIdx === -1) return null;
+                      calloutLeft = 0;
+                      for (let k = 0; k < firstIdx; k++) {
+                        calloutLeft += (phaseMinWidths?.get(stagePhases[k].id) ?? 176) + PHASE_GAP;
+                      }
+                      calloutWidth = 0;
+                      for (let k = firstIdx; k <= lastIdx; k++) {
+                        calloutWidth += phaseMinWidths?.get(stagePhases[k].id) ?? 176;
+                        if (k > firstIdx) calloutWidth += PHASE_GAP;
+                      }
                     }
-                    let spanWidth = 0;
-                    for (let k = firstIdx; k <= lastIdx; k++) {
-                      spanWidth += phaseMinWidths?.get(stagePhases[k].id) ?? 176;
-                      if (k > firstIdx) spanWidth += PHASE_GAP;
-                    }
+
                     return (
-                      <div key={c.id} style={{ marginLeft: offsetLeft, width: spanWidth }}>
+                      <div key={c.id} style={{ marginLeft: calloutLeft, width: calloutWidth }}>
                         <CalloutBadge
                           callout={c}
                           editMode={editMode}
@@ -1034,19 +1061,13 @@ function MomentsGridRow({
                   })}
                 </div>
               )}
-              {/* Spanning callouts — shown once below all sub-cells, stacked vertically */}
-              {spanning.length > 0 && (
-                <div className="flex w-full flex-col gap-1">
-                  {spanning.map((c) => (
-                    <CalloutBadge
-                      key={c.id}
-                      callout={c}
-                      editMode={editMode}
-                      onEditEntity={onEditEntity}
-                      onDeleteEntity={onDeleteEntity}
-                    />
-                  ))}
-                </div>
+              {editMode && (
+                <AddButton
+                  type="callout"
+                  label="Callout"
+                  parentId={`${col.stageId}:${swimlane.id}`}
+                  onClick={onEditEntity}
+                />
               )}
             </div>
           );
@@ -1058,34 +1079,57 @@ function MomentsGridRow({
         }
 
         // Orphan swimlane: single cell, no phase filter
-        return (
-          <div key={i} className="flex flex-col gap-1 overflow-visible pt-2">
-            <SwimlaneCell
-              touchpoints={touchpointsForColumn(touchpoints, swimlane.id, col, undefined)}
-              callouts={calloutsForColumn(callouts, swimlane.id, col, undefined)}
-              touchpointMedia={touchpointMedia}
-              editMode={editMode}
-              onEditEntity={onEditEntity}
-              onDeleteEntity={onDeleteEntity}
-            />
-            {editMode && (
-              <div className="flex gap-1">
-                <AddButton
-                  type="touchpoint"
-                  label="Touchpoint"
-                  parentId={`${col.stageId}:${swimlane.id}:`}
-                  onClick={onEditEntity}
-                />
+        {
+          const colTouchpoints = touchpointsForColumn(touchpoints, swimlane.id, col, undefined);
+          const colCallouts = calloutsForColumn(callouts, swimlane.id, col, undefined);
+          return (
+            <div key={i} className="flex flex-col gap-2 overflow-visible pt-2">
+              {/* Touchpoints row with inline + button */}
+              <div className="flex items-stretch gap-2 overflow-visible">
+                {colTouchpoints.map((tp) => (
+                  <div key={tp.id} className="w-[176px] shrink-0 overflow-visible [&:hover]:z-20">
+                    <TouchpointCard
+                      tp={tp}
+                      override={touchpointMedia[tp.id]}
+                      editMode={editMode}
+                      onEditEntity={onEditEntity}
+                      onDeleteEntity={onDeleteEntity}
+                    />
+                  </div>
+                ))}
+                {editMode && (
+                  <button
+                    type="button"
+                    onClick={() => onEditEntity({ type: "touchpoint", id: `new_touchpoint_${Date.now().toString(36)}`, parentId: `${col.stageId}:${swimlane.id}:`, isNew: true })}
+                    title="Add touchpoint"
+                    className="flex h-full min-h-[80px] w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-brand-cyan-500/40 bg-brand-cyan-500/5 text-lg font-bold text-brand-cyan-500 transition hover:border-brand-cyan-500 hover:bg-brand-cyan-500/10"
+                  >
+                    +
+                  </button>
+                )}
+                {colTouchpoints.length === 0 && !editMode && (
+                  <div className="min-h-[60px]" />
+                )}
+              </div>
+              {/* Callouts row */}
+              {colCallouts.length > 0 && (
+                <div className="flex w-full flex-col gap-1">
+                  {colCallouts.map((c) => (
+                    <CalloutBadge key={c.id} callout={c} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
+                  ))}
+                </div>
+              )}
+              {editMode && (
                 <AddButton
                   type="callout"
                   label="Callout"
                   parentId={`${col.stageId}:${swimlane.id}`}
                   onClick={onEditEntity}
                 />
-              </div>
-            )}
-          </div>
-        );
+              )}
+            </div>
+          );
+        }
       })}
     </div>
   );
@@ -1105,6 +1149,7 @@ function MotivationMapGridRow({
   onEditMotivationPoint,
   onAddMotivationPoint,
   dragProps,
+  editingEntityId,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
@@ -1116,6 +1161,7 @@ function MotivationMapGridRow({
   onEditMotivationPoint?: (colIndex: number, scoreIndex: number) => void;
   onAddMotivationPoint?: (colIndex: number, score: number) => void;
   dragProps?: DragRowProps;
+  editingEntityId?: string | null;
 }) {
   const title = meta?.title || swimlane.name;
 
@@ -1129,6 +1175,7 @@ function MotivationMapGridRow({
             "relative pr-2 pt-3 rounded-md transition-all duration-700",
             dragProps?.isDragTarget ? "border-b-2 border-brand-cyan-500" : "",
             isJustMoved ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
+            editingEntityId === swimlane.id ? "ring-2 ring-brand-cyan-500" : "",
           ].join(" ")}
           style={{ gridColumn: 1 }}
           onDragOver={dragProps?.onDragOver}
@@ -1136,7 +1183,7 @@ function MotivationMapGridRow({
           onDragLeave={dragProps?.onDragLeave}
         >
           {/* Grip + collapse button */}
-          <div className="mb-6 flex items-start gap-1">
+          <div className="mb-6 flex items-start justify-end gap-1">
             {dragProps && (
               <GripHandle onDragStart={dragProps.onDragStart} onDragEnd={dragProps.onDragEnd} />
             )}
@@ -1144,7 +1191,7 @@ function MotivationMapGridRow({
               type="button"
               onClick={onToggleCollapse}
               title={`Collapse ${swimlane.name}`}
-              className="flex items-start gap-1 rounded text-left transition-opacity hover:opacity-70"
+              className="flex items-start justify-end gap-1 rounded text-right transition-opacity hover:opacity-70"
             >
               <span className="mt-0.5 text-neutral-gray-500"><Chevron open size={10} /></span>
               <span className="text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">
@@ -1232,6 +1279,7 @@ export function BlueprintCanvas({
   onToggleCollapse,
   onToggleSectionCollapse,
   onTogglePhaseGroupCollapse,
+  editingEntityId,
 }: Props) {
   const { sections, insights } = blueprint;
 
@@ -1245,7 +1293,38 @@ export function BlueprintCanvas({
       {/* Section cards */}
       {sortedSections.map((section) => {
         const sectionStages = stagesForSection(blueprint, section.id);
-        if (sectionStages.length === 0) return null;
+        if (sectionStages.length === 0 && !editMode) return null;
+        if (sectionStages.length === 0 && editMode) {
+          // New/empty section — render a placeholder so the user can add stages
+          return (
+            <section
+              key={section.id}
+              className={`w-max min-w-full rounded-2xl bg-white p-4 shadow-sm ${editingEntityId === section.id ? "ring-2 ring-brand-cyan-500" : "ring-1 ring-neutral-gray-100"}`}
+            >
+              <div className="mb-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onToggleSectionCollapse(section.id)}
+                  className="flex shrink-0 items-center justify-center rounded p-0.5 text-neutral-gray-500 hover:bg-neutral-gray-100 hover:text-brand-navy-1000"
+                >
+                  <Chevron open={!collapsedSections.has(section.id)} size={14} />
+                </button>
+                <input
+                  type="text"
+                  value={section.name}
+                  onChange={(e) => onUpdateSection?.(section.id, { name: e.target.value })}
+                  className="rounded-md border border-neutral-gray-200 bg-white px-3 py-1 text-lg font-bold text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
+                  placeholder="Section name"
+                />
+                <DeleteButton type="section" id={section.id} onConfirm={onDeleteEntity} />
+              </div>
+              <div className="flex items-center gap-2 rounded-lg border border-dashed border-neutral-gray-300 bg-neutral-gray-50 px-4 py-6 text-sm text-neutral-gray-500">
+                <span>This section has no stages yet.</span>
+                <AddButton type="stage" label="Stage" parentId={section.id} onClick={onEditEntity} />
+              </div>
+            </section>
+          );
+        }
         return (
           <SectionCard
             key={section.id}
@@ -1266,6 +1345,7 @@ export function BlueprintCanvas({
             onToggleCollapse={onToggleCollapse}
             onToggleSectionCollapse={onToggleSectionCollapse}
             onTogglePhaseGroupCollapse={onTogglePhaseGroupCollapse}
+            editingEntityId={editingEntityId}
           />
         );
       })}

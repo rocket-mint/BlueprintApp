@@ -309,9 +309,6 @@ export function EditDrawer() {
           <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-cyan-500">
             {isNew ? `Add ${label}` : `Edit ${label}`}
           </div>
-          {type !== "motivation_point" && (
-            <div className="truncate text-sm font-bold text-brand-navy-1000">{id}</div>
-          )}
         </div>
         <button
           onClick={close}
@@ -703,9 +700,9 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [calloutType, setCalloutType] = useState<CalloutType>(existing?.type ?? "note");
+  const [label, setLabel] = useState(existing?.label ?? "");
   const [stageId, setStageId] = useState(existing?.stageId ?? parentStage ?? bp.journeyStages[0]?.id ?? "");
   const [swimlaneId] = useState(existing?.swimlaneId ?? parentSwimlane ?? "");
-  // phaseIds: undefined / empty = all phases; populated = specific phases
   const [phaseIds, setPhaseIds] = useState<string[]>(existing?.phaseIds ?? []);
 
   // If the swimlane is a phase-group lane, find available phases for current stage + group
@@ -730,10 +727,10 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
       const newId = slugify(title) || id;
       dispatch({
         type: "ADD_CALLOUT",
-        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, order: bp.callouts.length + 1 } as Callout,
+        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, label: label.trim() || undefined, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, order: bp.callouts.length + 1 } as Callout,
       });
     } else {
-      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds } });
+      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, label: label.trim() || undefined, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds } });
     }
     onClose();
   };
@@ -752,6 +749,7 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
       <Field label="Type">
         <SelectInput value={calloutType} onChange={(v) => setCalloutType(v as CalloutType)} options={typeOptions} />
       </Field>
+      <Field label="Label"><TextInput value={label} onChange={setLabel} placeholder={typeOptions.find((o) => o.value === calloutType)?.label ?? "Label"} /></Field>
       <Field label="Stage">
         <SelectInput value={stageId} onChange={(v) => { setStageId(v); setPhaseIds([]); }} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
       </Field>
@@ -760,25 +758,16 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
           <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">
             Appears in
           </label>
-          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-gray-50">
-            <input
-              type="checkbox"
-              className="accent-brand-cyan-500"
-              checked={phaseIds.length === 0}
-              onChange={() => setPhaseIds([])}
-            />
-            <span className="font-medium text-brand-navy-1000">All phases</span>
-          </label>
           {availablePhases.map((p) => (
             <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-gray-50">
               <input
                 type="checkbox"
                 className="accent-brand-cyan-500"
-                checked={phaseIds.includes(p.id)}
+                checked={phaseIds.length === 0 || phaseIds.includes(p.id)}
                 onChange={() => {
-                  // If "all" is currently active, switch to just this phase
                   if (phaseIds.length === 0) {
-                    setPhaseIds([p.id]);
+                    // Was spanning all — switch to all except this one
+                    setPhaseIds(availablePhases.filter((ap) => ap.id !== p.id).map((ap) => ap.id));
                   } else {
                     togglePhase(p.id);
                   }

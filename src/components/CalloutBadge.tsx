@@ -2,6 +2,7 @@
 
 import type { Callout, CalloutType } from "../types/blueprint";
 import type { EditingEntity, EditableEntityType } from "../context/BlueprintContext";
+import { useBlueprint } from "../hooks/useBlueprint";
 import { DeleteButton } from "./EditControls";
 
 const CALLOUT_STYLES: Record<CalloutType, { bg: string; border: string; icon: string; text: string }> = {
@@ -36,11 +37,13 @@ interface Props {
 }
 
 export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }: Props) {
+  const { state } = useBlueprint();
+  const isEditing = state.editingEntity?.id === callout.id;
   const style = CALLOUT_STYLES[callout.type] ?? CALLOUT_STYLES.note;
 
   return (
     <div
-      className={`group/co flex items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${style.border}`}
+      className={`group/co flex items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${isEditing ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500" : style.border}`}
       title={callout.description ?? undefined}
     >
       <span className={`shrink-0 text-[11px] leading-none ${style.icon}`}>
@@ -48,7 +51,7 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
       </span>
       <div className="min-w-0 flex-1">
         <div className={`text-[10px] font-semibold uppercase tracking-wider ${style.text}`}>
-          {CALLOUT_LABELS[callout.type]}
+          {callout.label || CALLOUT_LABELS[callout.type]}
         </div>
         <div className="text-[11px] font-medium leading-tight text-brand-navy-900">
           {callout.title}
@@ -65,9 +68,9 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
             type="button"
             onClick={(e) => { e.stopPropagation(); onEditEntity({ type: "callout", id: callout.id }); }}
             title="Edit callout"
-            className="text-neutral-gray-400 hover:text-brand-cyan-500"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-cyan-500/10 text-brand-cyan-500 transition-colors hover:bg-brand-cyan-500 hover:text-white"
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
           </button>

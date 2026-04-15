@@ -133,6 +133,8 @@ export interface Callout {
   /** Which phase sub-cells to display in. Empty / absent = span ALL phases in the stage. */
   phaseIds?: string[];
   type: CalloutType;
+  /** Custom label overriding the default type name (e.g. "Pain Point"). */
+  label?: string;
   title: string;
   description?: string;
   order: number;

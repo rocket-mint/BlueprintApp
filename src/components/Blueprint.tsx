@@ -21,6 +21,7 @@ export function Blueprint() {
     collapsedSections,
     collapsedPhaseGroups,
     editMode,
+    editingEntity,
   } = state;
 
   const swimlanes = blueprint?.swimlanes ?? [];
@@ -60,6 +61,7 @@ export function Blueprint() {
           onToggleCollapse={(id) => toggleSwimlaneCollapse(id)}
           onToggleSectionCollapse={(id) => toggleSectionCollapse(id)}
           onTogglePhaseGroupCollapse={(id) => togglePhaseGroupCollapse(id)}
+          editingEntityId={editingEntity?.id}
         />
       </div>
 

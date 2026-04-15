@@ -32,35 +32,26 @@ export function SwimlaneCell({
     );
   }
 
-  // Callouts are capped to the combined width of the touchpoints they sit beside.
-  const CARD_W = 176;
-  const CARD_GAP = 8;
-  const calloutWidth =
-    touchpoints.length > 0
-      ? touchpoints.length * CARD_W + (touchpoints.length - 1) * CARD_GAP
-      : undefined; // no touchpoints → callouts fill available width
-
   return (
-    <div className="flex flex-col gap-2 overflow-visible">
-      <div className="flex items-stretch gap-2 overflow-visible">
-        {touchpoints.map((tp) => (
-          <div key={tp.id} className="w-[176px] shrink-0 overflow-visible [&:hover]:z-20">
-            <TouchpointCard
-              tp={tp}
-              override={touchpointMedia[tp.id]}
-              editMode={editMode}
-              onEditEntity={onEditEntity}
-              onDeleteEntity={onDeleteEntity}
-            />
-          </div>
-        ))}
-      </div>
+    <div className="flex h-full flex-col gap-2 overflow-visible">
+      {touchpoints.length > 0 && (
+        <div className="flex h-full items-stretch gap-2 overflow-visible">
+          {touchpoints.map((tp) => (
+            <div key={tp.id} className="w-[176px] shrink-0 overflow-visible [&:hover]:z-20">
+              <TouchpointCard
+                tp={tp}
+                override={touchpointMedia[tp.id]}
+                editMode={editMode}
+                onEditEntity={onEditEntity}
+                onDeleteEntity={onDeleteEntity}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {callouts.length > 0 && (
-        <div
-          style={calloutWidth !== undefined ? { width: calloutWidth } : undefined}
-          className={`flex flex-col gap-1${calloutWidth === undefined ? " w-full" : ""}`}
-        >
+        <div className="flex w-full flex-col gap-1">
           {callouts.map((c) => (
             <CalloutBadge key={c.id} callout={c} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
           ))}
