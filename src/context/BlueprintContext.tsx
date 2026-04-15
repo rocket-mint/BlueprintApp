@@ -36,6 +36,7 @@ export interface BlueprintState {
   touchpointMedia: Record<string, Media>;
   collapsedSwimlanes: Set<string>;
   collapsedSections: Set<string>;
+  collapsedPhaseGroups: Set<string>;
   editingTouchpoint: Touchpoint | null;
   /** Whether the blueprint is in edit mode (shows pencil/add/delete buttons). */
   editMode: boolean;
@@ -49,6 +50,7 @@ const initialState: BlueprintState = {
   touchpointMedia: {},
   collapsedSwimlanes: new Set(),
   collapsedSections: new Set(),
+  collapsedPhaseGroups: new Set(),
   editingTouchpoint: null,
   editMode: false,
   editingEntity: null,
@@ -109,6 +111,9 @@ type Action =
   | { type: "TOGGLE_SECTION_COLLAPSE"; id: string }
   | { type: "COLLAPSE_ALL_SECTIONS" }
   | { type: "EXPAND_ALL_SECTIONS" }
+  | { type: "TOGGLE_PHASE_GROUP_COLLAPSE"; id: string }
+  | { type: "COLLAPSE_ALL_PHASE_GROUPS" }
+  | { type: "EXPAND_ALL_PHASE_GROUPS" }
   // Edit mode
   | { type: "SET_EDIT_MODE"; on: boolean }
   | { type: "SET_EDITING_ENTITY"; entity: EditingEntity | null };
@@ -140,13 +145,16 @@ function ensureBp(bp: Blueprint | null): Blueprint {
 
 function reducer(state: BlueprintState, action: Action): BlueprintState {
   switch (action.type) {
-    case "LOAD_BLUEPRINT":
+    case "LOAD_BLUEPRINT": {
+      const groupIds = [...new Set(action.blueprint.phases.map((p) => p.groupId ?? p.id))];
       return {
         ...initialState,
         blueprint: action.blueprint,
         fileName: action.fileName,
         touchpointMedia: action.touchpointMedia ?? {},
+        collapsedPhaseGroups: new Set(groupIds),
       };
+    }
 
     case "RESET":
       return initialState;
@@ -351,6 +359,23 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
     case "EXPAND_ALL_SECTIONS":
       return { ...state, collapsedSections: new Set() };
 
+    case "TOGGLE_PHASE_GROUP_COLLAPSE": {
+      const next = new Set(state.collapsedPhaseGroups);
+      if (next.has(action.id)) next.delete(action.id);
+      else next.add(action.id);
+      return { ...state, collapsedPhaseGroups: next };
+    }
+
+    case "COLLAPSE_ALL_PHASE_GROUPS": {
+      const bp = state.blueprint;
+      if (!bp) return state;
+      const groupIds = [...new Set(bp.phases.map((p) => p.groupId ?? p.id))];
+      return { ...state, collapsedPhaseGroups: new Set(groupIds) };
+    }
+
+    case "EXPAND_ALL_PHASE_GROUPS":
+      return { ...state, collapsedPhaseGroups: new Set() };
+
     case "SET_EDIT_MODE":
       return { ...state, editMode: action.on, editingEntity: action.on ? state.editingEntity : null };
 
@@ -388,6 +413,11 @@ export interface BlueprintContextValue {
   toggleSectionCollapse: (id: string) => void;
   collapseAllSections: () => void;
   expandAllSections: () => void;
+
+  // Phase group collapse
+  togglePhaseGroupCollapse: (id: string) => void;
+  collapseAllPhaseGroups: () => void;
+  expandAllPhaseGroups: () => void;
 
   // Edit mode
   setEditMode: (on: boolean) => void;
@@ -446,6 +476,13 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
   const collapseAllSections = useCallback(() => dispatch({ type: "COLLAPSE_ALL_SECTIONS" }), []);
   const expandAllSections = useCallback(() => dispatch({ type: "EXPAND_ALL_SECTIONS" }), []);
 
+  const togglePhaseGroupCollapse = useCallback(
+    (id: string) => dispatch({ type: "TOGGLE_PHASE_GROUP_COLLAPSE", id }),
+    [],
+  );
+  const collapseAllPhaseGroups = useCallback(() => dispatch({ type: "COLLAPSE_ALL_PHASE_GROUPS" }), []);
+  const expandAllPhaseGroups = useCallback(() => dispatch({ type: "EXPAND_ALL_PHASE_GROUPS" }), []);
+
   const setEditMode = useCallback((on: boolean) => dispatch({ type: "SET_EDIT_MODE", on }), []);
   const setEditingEntity = useCallback(
     (entity: EditingEntity | null) => dispatch({ type: "SET_EDITING_ENTITY", entity }),
@@ -467,6 +504,9 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
       toggleSectionCollapse,
       collapseAllSections,
       expandAllSections,
+      togglePhaseGroupCollapse,
+      collapseAllPhaseGroups,
+      expandAllPhaseGroups,
       setEditMode,
       setEditingEntity,
     }),
@@ -483,6 +523,9 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
       toggleSectionCollapse,
       collapseAllSections,
       expandAllSections,
+      togglePhaseGroupCollapse,
+      collapseAllPhaseGroups,
+      expandAllPhaseGroups,
       setEditMode,
       setEditingEntity,
     ],

@@ -11,6 +11,7 @@ export function Blueprint() {
     setEditingEntity,
     toggleSwimlaneCollapse,
     toggleSectionCollapse,
+    togglePhaseGroupCollapse,
   } = useBlueprint();
 
   const {
@@ -18,6 +19,7 @@ export function Blueprint() {
     touchpointMedia,
     collapsedSwimlanes,
     collapsedSections,
+    collapsedPhaseGroups,
     editMode,
   } = state;
 
@@ -45,6 +47,7 @@ export function Blueprint() {
           touchpointMedia={touchpointMedia}
           collapsedSwimlanes={collapsedSwimlanes}
           collapsedSections={collapsedSections}
+          collapsedPhaseGroups={collapsedPhaseGroups}
           editMode={editMode}
           onEditEntity={(entity) => setEditingEntity(entity)}
           onDeleteEntity={(type, id) => dispatch({ type: `DELETE_${type.toUpperCase()}`, id } as any)}
@@ -56,6 +59,7 @@ export function Blueprint() {
           onReorderRows={(update) => dispatch({ type: "BATCH_REORDER", ...update })}
           onToggleCollapse={(id) => toggleSwimlaneCollapse(id)}
           onToggleSectionCollapse={(id) => toggleSectionCollapse(id)}
+          onTogglePhaseGroupCollapse={(id) => togglePhaseGroupCollapse(id)}
         />
       </div>
 

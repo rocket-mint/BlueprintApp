@@ -188,6 +188,7 @@ interface Props {
   touchpointMedia: Record<string, Media>;
   collapsedSwimlanes: Set<string>;
   collapsedSections: Set<string>;
+  collapsedPhaseGroups: Set<string>;
   editMode: boolean;
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
@@ -197,6 +198,7 @@ interface Props {
   onReorderRows?: (update: ReorderUpdate) => void;
   onToggleCollapse: (id: string) => void;
   onToggleSectionCollapse: (id: string) => void;
+  onTogglePhaseGroupCollapse: (id: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +220,8 @@ function SectionCard({
   onReorderRows,
   onToggleCollapse,
   onToggleSectionCollapse,
+  onTogglePhaseGroupCollapse,
+  collapsedPhaseGroups,
 }: {
   section: Section;
   sectionStages: JourneyStage[];
@@ -225,6 +229,7 @@ function SectionCard({
   touchpointMedia: Record<string, Media>;
   collapsedSwimlanes: Set<string>;
   collapsed: boolean;
+  collapsedPhaseGroups: Set<string>;
   editMode: boolean;
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
@@ -234,6 +239,7 @@ function SectionCard({
   onReorderRows?: (update: ReorderUpdate) => void;
   onToggleCollapse: (id: string) => void;
   onToggleSectionCollapse: (id: string) => void;
+  onTogglePhaseGroupCollapse: (id: string) => void;
 }) {
   // ── Grid layout ──
   const gridColumns = useMemo<GridColumn[]>(
@@ -765,6 +771,15 @@ function SectionCard({
                       onDragEnd={() => { setSectionDragId(null); setSectionDragOverId(null); }}
                     />
                   )}
+                  <button
+                    type="button"
+                    onClick={() => onTogglePhaseGroupCollapse(item.id)}
+                    className="flex shrink-0 items-center justify-center rounded p-0.5 text-neutral-gray-500 hover:bg-neutral-gray-100 hover:text-brand-navy-1000"
+                    aria-label={collapsedPhaseGroups.has(item.id) ? "Expand phase group" : "Collapse phase group"}
+                    title={collapsedPhaseGroups.has(item.id) ? "Expand phase group" : "Collapse phase group"}
+                  >
+                    <Chevron open={!collapsedPhaseGroups.has(item.id)} size={14} />
+                  </button>
                   {editMode ? (
                     <input
                       type="text"
@@ -774,13 +789,17 @@ function SectionCard({
                       placeholder="Phase"
                     />
                   ) : (
-                    <span className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">
+                    <button
+                      type="button"
+                      onClick={() => onTogglePhaseGroupCollapse(item.id)}
+                      className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000 hover:text-brand-cyan-700 cursor-pointer bg-transparent border-none p-0"
+                    >
                       {item.phases[0]?.groupLabel || "Phase"}
-                    </span>
+                    </button>
                   )}
                 </div>
 
-                {sectionStages.map((s) => {
+                {!collapsedPhaseGroups.has(item.id) && sectionStages.map((s) => {
                   const stagePhases = item.phases.filter((p) => p.stageId === s.id);
                   return (
                     <div key={s.id} className="flex items-stretch gap-1.5 pt-3">
@@ -809,11 +828,19 @@ function SectionCard({
                     </div>
                   );
                 })}
-                {editMode && <div />}
+                {!collapsedPhaseGroups.has(item.id) && editMode && <div />}
+                {collapsedPhaseGroups.has(item.id) && (
+                  <div
+                    style={{ gridColumn: `2 / ${totalCols + 1}` }}
+                    className="flex items-center pt-3 text-[12px] text-neutral-gray-400 italic"
+                  >
+                    {item.phases.length} phase{item.phases.length !== 1 ? "s" : ""}, {groupSwimlanes.length} swimlane{groupSwimlanes.length !== 1 ? "s" : ""}
+                  </div>
+                )}
               </div>
 
               {/* Swimlanes within this group — reorderable among each other */}
-              {groupSwimlanes.map((sl) => {
+              {!collapsedPhaseGroups.has(item.id) && groupSwimlanes.map((sl) => {
                 const isJustMovedSl = justMovedId === sl.id;
                 const dragProps: DragRowProps | undefined = editMode && !sectionDragId
                   ? {
@@ -836,7 +863,7 @@ function SectionCard({
               })}
 
               {/* + Swimlane */}
-              {editMode && (
+              {!collapsedPhaseGroups.has(item.id) && editMode && (
                 <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="pt-1">
                   <AddButton type="swimlane" label="Swimlane" parentId={`${section.id}:${item.id}`} onClick={onEditEntity} />
                 </div>
@@ -1194,6 +1221,7 @@ export function BlueprintCanvas({
   touchpointMedia,
   collapsedSwimlanes,
   collapsedSections,
+  collapsedPhaseGroups,
   editMode,
   onEditEntity,
   onDeleteEntity,
@@ -1203,6 +1231,7 @@ export function BlueprintCanvas({
   onReorderRows,
   onToggleCollapse,
   onToggleSectionCollapse,
+  onTogglePhaseGroupCollapse,
 }: Props) {
   const { sections, insights } = blueprint;
 
@@ -1226,6 +1255,7 @@ export function BlueprintCanvas({
             touchpointMedia={touchpointMedia}
             collapsedSwimlanes={collapsedSwimlanes}
             collapsed={collapsedSections.has(section.id)}
+            collapsedPhaseGroups={collapsedPhaseGroups}
             editMode={editMode}
             onEditEntity={onEditEntity}
             onDeleteEntity={onDeleteEntity}
@@ -1235,6 +1265,7 @@ export function BlueprintCanvas({
             onReorderRows={onReorderRows}
             onToggleCollapse={onToggleCollapse}
             onToggleSectionCollapse={onToggleSectionCollapse}
+            onTogglePhaseGroupCollapse={onTogglePhaseGroupCollapse}
           />
         );
       })}
