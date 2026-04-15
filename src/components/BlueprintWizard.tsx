@@ -756,17 +756,17 @@ function StructurePreview({
                   <div key={g.id} className="mt-1.5 border-t border-neutral-gray-100 pt-1.5">
                     <div className="flex flex-wrap gap-1">
                       {phaseNames.length > 0 ? phaseNames.map((name, i) => (
-                        <div key={i} className="truncate rounded bg-brand-navy-900 px-2 py-0.5 text-[9px] font-medium text-white">
+                        <div key={i} className="truncate rounded bg-brand-navy-900 px-2 py-0.5 text-[10px] font-medium text-white">
                           {name}
                         </div>
                       )) : (
-                        <span className="text-[9px] text-neutral-gray-400">Group {gi + 1}</span>
+                        <span className="text-[10px] text-neutral-gray-400">Group {gi + 1}</span>
                       )}
                     </div>
                     {currentStep >= 3 && groupSwimlanes.length > 0 && (
                       <div className="mt-1 flex flex-col gap-0.5">
                         {groupSwimlanes.map((sl) => (
-                          <div key={sl.id} className={`truncate rounded px-2 py-0.5 text-[9px] font-medium ${sl.isMotivationMap ? "bg-brand-purple-500/15 text-brand-purple-500" : "border border-neutral-gray-200 bg-white text-neutral-gray-600"}`}>
+                          <div key={sl.id} className={`truncate rounded px-2 py-0.5 text-[10px] font-medium ${sl.isMotivationMap ? "bg-brand-purple-500/15 text-brand-purple-500" : "border border-neutral-gray-200 bg-white text-neutral-gray-600"}`}>
                             {sl.name}
                           </div>
                         ))}

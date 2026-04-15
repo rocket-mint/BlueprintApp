@@ -310,6 +310,10 @@ export async function parseExcel(file: File): Promise<Blueprint> {
       .map((p) => phaseKeyLookup.get(p.toLowerCase()) ?? p)
       .filter(Boolean);
   };
+  const resolvePhaseId = (v: unknown): string | undefined => {
+    const ids = resolvePhaseIds(v);
+    return ids[0] || undefined;
+  };
 
   // ---- Touchpoints ----
   const touchpoints: Touchpoint[] = touchpointsRaw
@@ -322,7 +326,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
         channelType: str(r["Channel Type"]) || undefined,
         stageId: resolveStage(r["Journey Stage"] ?? r["Stage"] ?? r["Stage ID"]),
         swimlaneId: resolveSwimlane(r["Swimlane ID"] ?? r["Swimlane"]),
-        phaseIds: resolvePhaseIds(r["Phase IDs"] ?? r["Phase ID"] ?? r["Phases"]),
+        phaseId: resolvePhaseId(r["Phase IDs"] ?? r["Phase ID"] ?? r["Phases"]),
         description: str(r["Description"]) || undefined,
         iconColor: str(r["Icon/Color"] ?? r["Color"]) || undefined,
         order: num(r["Order"], i + 1),
@@ -345,7 +349,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
         id,
         stageId: resolveStage(r["Journey Stage"] ?? r["Stage"] ?? r["Stage ID"]),
         swimlaneId: resolveSwimlane(r["Swimlane ID"] ?? r["Swimlane"]) || undefined,
-        phaseIds: resolvePhaseIds(r["Phase IDs"] ?? r["Phase ID"] ?? r["Phases"]),
+        phaseId: resolvePhaseId(r["Phase IDs"] ?? r["Phase ID"] ?? r["Phases"]),
         type: parseCalloutType(r["Type"] ?? r["Callout Type"]),
         title: str(r["Callout Title"] ?? r["Title"]),
         description: str(r["Description"]) || undefined,

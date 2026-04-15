@@ -114,10 +114,10 @@ function InsightCard({
         <p className="text-[10px] leading-snug text-neutral-gray-700">{insight.text}</p>
       )}
       {insight.quote && (
-        <p className="text-[9px] italic leading-snug text-neutral-gray-500">"{insight.quote}"</p>
+        <p className="text-[10px] italic leading-snug text-neutral-gray-500">"{insight.quote}"</p>
       )}
       {insight.dataSource && (
-        <p className="text-[9px] text-neutral-gray-500">Source: {insight.dataSource}</p>
+        <p className="text-[10px] text-neutral-gray-500">Source: {insight.dataSource}</p>
       )}
     </div>
   );

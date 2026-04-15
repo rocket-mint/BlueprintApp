@@ -48,7 +48,7 @@ export function touchpointsForPhase(
   swimlaneId: string,
 ): Touchpoint[] {
   return bp.touchpoints
-    .filter((t) => t.phaseIds.includes(phaseId) && t.swimlaneId === swimlaneId)
+    .filter((t) => t.phaseId === phaseId && t.swimlaneId === swimlaneId)
     .sort((a, b) => a.order - b.order);
 }
 
@@ -142,6 +142,7 @@ export function stagesWithMotivationScores(
 export function createEmptyBlueprint(): Blueprint {
   return {
     sections: [],
+    stageGroups: [],
     journeyStages: [],
     phases: [],
     swimlanes: [],

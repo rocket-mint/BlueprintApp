@@ -4,11 +4,12 @@ interface TopNavProps {
   onToggleEditMode: () => void;
   onSave: () => void;
   onCancel: () => void;
+  onSaveBp: () => void;
   onDownload: () => void;
   onHome: () => void;
 }
 
-export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel, onDownload, onHome }: TopNavProps) {
+export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel, onSaveBp, onDownload, onHome }: TopNavProps) {
   return (
     <header
       className={`sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-5 transition-colors duration-200 ${
@@ -70,6 +71,7 @@ export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel,
             </button>
           </>
         ) : (
+          <>
           <button
             type="button"
             onClick={onToggleEditMode}
@@ -81,6 +83,20 @@ export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel,
             </svg>
             Edit
           </button>
+          <button
+            type="button"
+            onClick={onSaveBp}
+            title="Save as .bp project file"
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-gray-700 transition hover:bg-neutral-gray-50"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            Save
+          </button>
+          </>
         )}
 
         <button

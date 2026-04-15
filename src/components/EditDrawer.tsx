@@ -16,12 +16,81 @@ import type {
   Insight,
   CalloutType,
   MotivationMap as MotivationMapData,
+  StageGroup,
 } from "../types/blueprint";
 import { slugify } from "../utils/idGenerator";
 
 // ---------------------------------------------------------------------------
 // Shared form helpers
 // ---------------------------------------------------------------------------
+
+// Preset palette — backgrounds and text colors
+const BG_PRESETS = [
+  "#0F1724", "#1E3A5F", "#0891B2", "#0D9488", "#059669",
+  "#D97706", "#EA580C", "#DC2626", "#7C3AED", "#DB2777",
+  "#374151", "#6B7280", "#D1D5DB", "#F3F4F6", "#FFFFFF",
+];
+const TEXT_PRESETS = ["#FFFFFF", "#F9FAFB", "#0F1724", "#000000"];
+
+function ColorPicker({
+  label,
+  value,
+  onChange,
+  presets,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  presets: string[];
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">
+        {label}
+      </label>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {presets.map((color) => (
+          <button
+            key={color}
+            type="button"
+            title={color}
+            onClick={() => onChange(color)}
+            className="h-6 w-6 shrink-0 rounded-md border transition hover:scale-110"
+            style={{
+              backgroundColor: color,
+              borderColor: value === color ? "#0891B2" : color === "#FFFFFF" ? "#D1D5DB" : color,
+              boxShadow: value === color ? "0 0 0 2px #0891B2" : undefined,
+            }}
+          />
+        ))}
+        {/* Custom color input */}
+        <div className="relative">
+          <input
+            type="color"
+            value={value || presets[0]}
+            onChange={(e) => onChange(e.target.value)}
+            className="h-6 w-6 cursor-pointer rounded-md border border-neutral-gray-200 p-0"
+            title="Custom colour"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PillPreview({ name, bgColor, textColor, defaultBg }: { name: string; bgColor: string; textColor: string; defaultBg: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">Preview</label>
+      <div
+        className="inline-flex items-center justify-center rounded-md px-4 py-2.5 text-[14px] font-bold"
+        style={{ backgroundColor: bgColor || defaultBg, color: textColor || "#FFFFFF" }}
+      >
+        {name || "Stage name"}
+      </div>
+    </div>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -182,6 +251,7 @@ function ImageUpload({
 const TYPE_LABELS: Record<EditableEntityType, string> = {
   section: "Section",
   stage: "Stage",
+  stage_group: "Stage Group",
   phase: "Phase",
   swimlane: "Swimlane",
   touchpoint: "Touchpoint",
@@ -214,7 +284,9 @@ export function EditDrawer() {
   if (!editingEntity || !blueprint) return null;
 
   const { type, id, isNew } = editingEntity;
-  const label = TYPE_LABELS[type];
+  const parentParts = (editingEntity.parentId ?? "").split(":");
+  const isNewPhaseGroup = type === "phase" && isNew && !parentParts[1];
+  const label = isNewPhaseGroup ? "Phase Group" : TYPE_LABELS[type];
 
   const close = () => setEditingEntity(null);
 
@@ -222,6 +294,7 @@ export function EditDrawer() {
     const lists: Record<string, Array<{ id: string; order?: number }>> = {
       section: blueprint.sections,
       stage: blueprint.journeyStages,
+      stage_group: blueprint.stageGroups ?? [],
       phase: blueprint.phases,
       swimlane: blueprint.swimlanes,
       touchpoint: blueprint.touchpoints,
@@ -274,6 +347,7 @@ export function EditDrawer() {
         {type === "callout" && <CalloutForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
         {type === "insight" && <InsightForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
         {type === "motivation_point" && <MotivationPointForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
+        {type === "stage_group" && <StageGroupForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
       </div>
 
       {/* Footer — delete (not for motivation points, they handle their own) */}
@@ -338,19 +412,28 @@ function SectionForm({ id, bp, dispatch, isNew, onClose }: FormProps) {
 }
 
 // ── Stage ──
+const STAGE_DEFAULT_BG = "#E5E7EB";
+const STAGE_DEFAULT_TEXT = "#0F1724";
+
 function StageForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
   const existing = bp.journeyStages.find((s) => s.id === id);
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [sectionId, setSectionId] = useState(existing?.sectionId ?? parentId ?? bp.sections[0]?.id ?? "");
+  const [stageGroupId, setStageGroupId] = useState(existing?.stageGroupId ?? "");
+  const [bgColor, setBgColor] = useState(existing?.bgColor ?? STAGE_DEFAULT_BG);
+  const [textColor, setTextColor] = useState(existing?.textColor ?? STAGE_DEFAULT_TEXT);
+
+  // Compute available groups for this section
+  const sectionGroups = (bp.stageGroups ?? []).filter((g) => g.sectionId === sectionId);
 
   const save = () => {
     if (!name.trim()) return;
     if (isNew) {
       const newId = slugify(name) || id;
-      dispatch({ type: "ADD_STAGE", stage: { id: newId, name: name.trim(), sectionId, description: description.trim() || undefined, order: bp.journeyStages.length + 1 } as JourneyStage });
+      dispatch({ type: "ADD_STAGE", stage: { id: newId, name: name.trim(), sectionId, stageGroupId: stageGroupId || undefined, description: description.trim() || undefined, bgColor, textColor, order: bp.journeyStages.length + 1 } as JourneyStage });
     } else {
-      dispatch({ type: "UPDATE_STAGE", id, changes: { name: name.trim(), sectionId, description: description.trim() || undefined } });
+      dispatch({ type: "UPDATE_STAGE", id, changes: { name: name.trim(), sectionId, stageGroupId: stageGroupId || undefined, description: description.trim() || undefined, bgColor, textColor } });
     }
     onClose();
   };
@@ -359,13 +442,31 @@ function StageForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
     <div className="flex flex-col gap-4">
       <Field label="Name"><TextInput value={name} onChange={setName} placeholder="Stage name" /></Field>
       <Field label="Section">
-        <SelectInput value={sectionId} onChange={setSectionId} options={bp.sections.map((s) => ({ value: s.id, label: s.name }))} />
+        <SelectInput value={sectionId} onChange={(v) => { setSectionId(v); setStageGroupId(""); }} options={bp.sections.map((s) => ({ value: s.id, label: s.name }))} />
       </Field>
+      {sectionGroups.length > 0 && (
+        <Field label="Stage Group">
+          <SelectInput
+            value={stageGroupId}
+            onChange={setStageGroupId}
+            options={[
+              { value: "", label: "(No group)" },
+              ...sectionGroups.map((g) => ({ value: g.id, label: g.name })),
+            ]}
+          />
+        </Field>
+      )}
       <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
+      <ColorPicker label="Background colour" value={bgColor} onChange={setBgColor} presets={BG_PRESETS} />
+      <ColorPicker label="Text colour" value={textColor} onChange={setTextColor} presets={TEXT_PRESETS} />
+      <PillPreview name={name} bgColor={bgColor} textColor={textColor} defaultBg={STAGE_DEFAULT_BG} />
       <SaveButton onSave={save} disabled={!name.trim()} />
     </div>
   );
 }
+
+const PHASE_DEFAULT_BG = "#0F1724";
+const PHASE_DEFAULT_TEXT = "#FFFFFF";
 
 // ── Phase ──
 function PhaseForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
@@ -374,29 +475,55 @@ function PhaseForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
   const parentParts = (parentId ?? "").split(":");
   const parentStage = parentParts[0] || "";
   const parentGroup = parentParts[1] || "";
+  // New group = isNew with no parentGroup; new phase = isNew with parentGroup
+  const isNewGroup = isNew && !parentGroup;
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [stageId, setStageId] = useState(existing?.stageId ?? (parentStage || (bp.journeyStages[0]?.id ?? "")));
+  const [bgColor, setBgColor] = useState(existing?.bgColor ?? PHASE_DEFAULT_BG);
+  const [textColor, setTextColor] = useState(existing?.textColor ?? PHASE_DEFAULT_TEXT);
 
   const save = () => {
     if (!name.trim()) return;
     const groupId = existing?.groupId ?? (parentGroup || undefined);
     if (isNew) {
       const newId = slugify(name) || id;
-      dispatch({ type: "ADD_PHASE", phase: { id: newId, name: name.trim(), stageId, groupId, description: description.trim() || undefined, order: bp.phases.length + 1 } as Phase });
+      // Inherit the group's current order so it stays in its reordered position.
+      // For a new group, place it at the end.
+      let order: number;
+      if (groupId) {
+        // Place after the last existing phase in the same stage+group so it appends correctly.
+        const stageGroupPhases = bp.phases.filter(
+          (p) => p.stageId === stageId && (p.groupId ?? p.id) === groupId,
+        );
+        order = stageGroupPhases.length > 0
+          ? Math.max(...stageGroupPhases.map((p) => p.order)) + 1
+          : (bp.phases.length > 0 ? Math.max(...bp.phases.map((p) => p.order)) + 1 : 0);
+      } else {
+        order = bp.phases.length > 0 ? Math.max(...bp.phases.map((p) => p.order)) + 100 : 0;
+      }
+      // For a new group, the title becomes the groupLabel; the phase name defaults to the title too.
+      const groupLabel = isNewGroup ? name.trim() : undefined;
+      const newGroupId = isNewGroup ? newId : groupId;
+      dispatch({ type: "ADD_PHASE", phase: { id: newId, name: name.trim(), stageId, groupId: newGroupId, groupLabel, description: description.trim() || undefined, bgColor, textColor, order } as Phase });
     } else {
-      dispatch({ type: "UPDATE_PHASE", id, changes: { name: name.trim(), stageId, description: description.trim() || undefined } });
+      dispatch({ type: "UPDATE_PHASE", id, changes: { name: name.trim(), stageId, description: description.trim() || undefined, bgColor, textColor } });
     }
     onClose();
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <Field label="Name"><TextInput value={name} onChange={setName} placeholder="Phase name" /></Field>
+      <Field label={isNewGroup ? "Group Title" : "Name"}>
+        <TextInput value={name} onChange={setName} placeholder={isNewGroup ? "Phase group title" : "Phase name"} />
+      </Field>
       <Field label="Stage">
         <SelectInput value={stageId} onChange={setStageId} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
       </Field>
       <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
+      <ColorPicker label="Background colour" value={bgColor} onChange={setBgColor} presets={BG_PRESETS} />
+      <ColorPicker label="Text colour" value={textColor} onChange={setTextColor} presets={TEXT_PRESETS} />
+      <PillPreview name={name} bgColor={bgColor} textColor={textColor} defaultBg={PHASE_DEFAULT_BG} />
       <SaveButton onSave={save} disabled={!name.trim()} />
     </div>
   );
@@ -419,7 +546,13 @@ function SwimlaneForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps)
     if (!name.trim()) return;
     if (isNew) {
       const newId = slugify(name) || id;
-      dispatch({ type: "ADD_SWIMLANE", swimlane: { id: newId, name: name.trim(), type: type as Swimlane["type"], sectionId, phaseId: phaseId || undefined, description: description.trim() || undefined, order: bp.swimlanes.length + 1 } as Swimlane });
+      // Append after existing swimlanes in the same group (or orphan pool) so
+      // reordered positions are preserved.
+      const peers = bp.swimlanes.filter((sl) =>
+        sl.sectionId === sectionId && (phaseId ? sl.phaseId === phaseId : !sl.phaseId),
+      );
+      const order = peers.length > 0 ? Math.max(...peers.map((sl) => sl.order)) + 10 : 0;
+      dispatch({ type: "ADD_SWIMLANE", swimlane: { id: newId, name: name.trim(), type: type as Swimlane["type"], sectionId, phaseId: phaseId || undefined, description: description.trim() || undefined, order } as Swimlane });
     } else {
       dispatch({ type: "UPDATE_SWIMLANE", id, changes: { name: name.trim(), type: type as Swimlane["type"], sectionId, phaseId: phaseId || undefined, description: description.trim() || undefined } });
     }
@@ -429,9 +562,6 @@ function SwimlaneForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps)
   return (
     <div className="flex flex-col gap-4">
       <Field label="Name"><TextInput value={name} onChange={setName} placeholder="Swimlane name" /></Field>
-      <Field label="Section">
-        <SelectInput value={sectionId} onChange={setSectionId} options={bp.sections.map((s) => ({ value: s.id, label: s.name }))} />
-      </Field>
       <Field label="Phase group">
         {(() => {
           // Deduplicate phases by groupId — one option per phase group
@@ -480,7 +610,9 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
   const [customNotes, setCustomNotes] = useState(existing?.customNotes ?? "");
   const [hoverTitle, setHoverTitle] = useState(existing?.hoverTitle ?? "");
   const [hoverDescription, setHoverDescription] = useState(existing?.hoverDescription ?? "");
-  const [stageId, setStageId] = useState(existing?.stageId ?? (parentStage || (bp.journeyStages[0]?.id ?? "")));
+  // When editing in a phase-group context, stageId is derived from the phase — not user-selectable
+  const phaseStageId = parentPhase ? (bp.phases.find((p) => p.id === parentPhase)?.stageId ?? parentStage) : "";
+  const [stageId, setStageId] = useState(existing?.stageId ?? (phaseStageId || parentStage || (bp.journeyStages[0]?.id ?? "")));
   const [swimlaneId, setSwimlaneId] = useState(existing?.swimlaneId ?? (parentSwimlane || (bp.swimlanes[0]?.id ?? "")));
 
   const save = () => {
@@ -497,12 +629,12 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
     };
     if (isNew) {
       const newId = slugify(name) || id;
-      const phaseIds = parentPhase ? [parentPhase] : [];
       dispatch({
         type: "ADD_TOUCHPOINT",
         touchpoint: {
           id: newId, ...commonFields,
-          phaseIds, photos: [], links: [],
+          phaseId: parentPhase || undefined,
+          photos: [], links: [],
           order: bp.touchpoints.length + 1,
         } as Touchpoint,
       });
@@ -542,16 +674,15 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
         <>
           <Field label="Name"><TextInput value={name} onChange={setName} placeholder="Touchpoint name" /></Field>
           <Field label="Channel Type"><TextInput value={channelType} onChange={setChannelType} placeholder="e.g. Email, Web, Phone" /></Field>
-          <Field label="Stage">
-            <SelectInput value={stageId} onChange={setStageId} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
-          </Field>
-          <Field label="Swimlane">
-            <SelectInput value={swimlaneId} onChange={setSwimlaneId} options={momentsSwimlanes.map((s) => ({ value: s.id, label: s.name }))} />
-          </Field>
+          {!(parentPhase || existing?.phaseId) && (
+            <Field label="Stage">
+              <SelectInput value={stageId} onChange={setStageId} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
+            </Field>
+          )}
           <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
           <Field label="Image"><ImageUpload value={imageUrl} onChange={setImageUrl} /></Field>
           <Field label="Hyperlink"><TextInput value={linkUrl} onChange={setLinkUrl} placeholder="https://example.com" /></Field>
-          <Field label="Notes"><TextArea value={customNotes} onChange={setCustomNotes} placeholder="Custom notes" rows={2} /></Field>
+          <Field label="Quotes"><TextArea value={customNotes} onChange={setCustomNotes} placeholder="Custom notes" rows={2} /></Field>
         </>
       )}
 
@@ -580,21 +711,44 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
 // ── Callout ──
 function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
   const existing = bp.callouts.find((c) => c.id === id);
+  // parentId format: "stageId:swimlaneId"
+  const parentParts = (parentId ?? "").split(":");
+  const parentStage = parentParts[0] || "";
+  const parentSwimlane = parentParts[1] || "";
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [calloutType, setCalloutType] = useState<CalloutType>(existing?.type ?? "note");
-  const [stageId, setStageId] = useState(existing?.stageId ?? parentId ?? bp.journeyStages[0]?.id ?? "");
+  const [stageId, setStageId] = useState(existing?.stageId ?? parentStage ?? bp.journeyStages[0]?.id ?? "");
+  const [swimlaneId] = useState(existing?.swimlaneId ?? parentSwimlane ?? "");
+  // phaseIds: undefined / empty = all phases; populated = specific phases
+  const [phaseIds, setPhaseIds] = useState<string[]>(existing?.phaseIds ?? []);
+
+  // If the swimlane is a phase-group lane, find available phases for current stage + group
+  const swimlane = bp.swimlanes.find((s) => s.id === swimlaneId);
+  const phaseGroupId = swimlane?.phaseId ?? "";
+  const availablePhases = phaseGroupId
+    ? bp.phases
+        .filter((p) => p.stageId === stageId && (p.groupId ?? p.id) === phaseGroupId)
+        .sort((a, b) => a.order - b.order)
+    : [];
+
+  function togglePhase(pid: string) {
+    setPhaseIds((prev) =>
+      prev.includes(pid) ? prev.filter((x) => x !== pid) : [...prev, pid],
+    );
+  }
 
   const save = () => {
     if (!title.trim()) return;
+    const resolvedPhaseIds = phaseIds.length > 0 ? phaseIds : undefined;
     if (isNew) {
       const newId = slugify(title) || id;
       dispatch({
         type: "ADD_CALLOUT",
-        callout: { id: newId, stageId, type: calloutType, title: title.trim(), description: description.trim() || undefined, phaseIds: [], order: bp.callouts.length + 1 } as Callout,
+        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, order: bp.callouts.length + 1 } as Callout,
       });
     } else {
-      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, stageId, description: description.trim() || undefined } });
+      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds } });
     }
     onClose();
   };
@@ -614,8 +768,42 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
         <SelectInput value={calloutType} onChange={(v) => setCalloutType(v as CalloutType)} options={typeOptions} />
       </Field>
       <Field label="Stage">
-        <SelectInput value={stageId} onChange={setStageId} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
+        <SelectInput value={stageId} onChange={(v) => { setStageId(v); setPhaseIds([]); }} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
       </Field>
+      {availablePhases.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">
+            Appears in
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-gray-50">
+            <input
+              type="checkbox"
+              className="accent-brand-cyan-500"
+              checked={phaseIds.length === 0}
+              onChange={() => setPhaseIds([])}
+            />
+            <span className="font-medium text-brand-navy-1000">All phases</span>
+          </label>
+          {availablePhases.map((p) => (
+            <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-gray-50">
+              <input
+                type="checkbox"
+                className="accent-brand-cyan-500"
+                checked={phaseIds.includes(p.id)}
+                onChange={() => {
+                  // If "all" is currently active, switch to just this phase
+                  if (phaseIds.length === 0) {
+                    setPhaseIds([p.id]);
+                  } else {
+                    togglePhase(p.id);
+                  }
+                }}
+              />
+              <span className="text-brand-navy-1000">{p.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
       <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
       <SaveButton onSave={save} disabled={!title.trim()} />
     </div>
@@ -754,6 +942,48 @@ function MotivationPointForm({ id, bp, dispatch, isNew, parentId, onClose }: For
           Remove data point
         </button>
       )}
+    </div>
+  );
+}
+
+// ── Stage Group ──
+function StageGroupForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
+  const existing = (bp.stageGroups ?? []).find((g) => g.id === id);
+  const [name, setName] = useState(existing?.name ?? "");
+  const [sectionId, setSectionId] = useState(existing?.sectionId ?? parentId ?? bp.sections[0]?.id ?? "");
+
+  const save = () => {
+    if (!name.trim()) return;
+    if (isNew) {
+      const newId = slugify(name) || id;
+      dispatch({
+        type: "ADD_STAGE_GROUP",
+        stageGroup: {
+          id: newId,
+          name: name.trim(),
+          sectionId,
+          order: (bp.stageGroups?.length ?? 0) + 1,
+        } as StageGroup,
+      });
+    } else {
+      dispatch({ type: "UPDATE_STAGE_GROUP", id, changes: { name: name.trim(), sectionId } });
+    }
+    onClose();
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Field label="Name">
+        <TextInput value={name} onChange={setName} placeholder='Group name (e.g. "Evaluate", "Buy")' />
+      </Field>
+      <Field label="Section">
+        <SelectInput
+          value={sectionId}
+          onChange={setSectionId}
+          options={bp.sections.map((s) => ({ value: s.id, label: s.name }))}
+        />
+      </Field>
+      <SaveButton onSave={save} disabled={!name.trim()} />
     </div>
   );
 }
