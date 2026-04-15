@@ -8,7 +8,7 @@
 
 import type { Section, JourneyStage, Phase } from "../types/blueprint";
 
-export const LABEL_COL_W = 150;
+export const LABEL_COL_W = 190;
 export const MIN_COL_W = 180;
 export const COL_GAP = 14;
 /** Horizontal padding on section cards (mirrors `sm:px-10`). */

@@ -19,6 +19,21 @@ export interface Section {
   id: string;
   name: string;
   description?: string;
+  /** Custom label for the stage row (defaults to "Stage"). */
+  stageLabel?: string;
+  /** Custom label for the stage group row (defaults to "Group"). */
+  stageGroupLabel?: string;
+  order: number;
+}
+
+// ---------------------------------------------------------------------------
+// StageGroup — optional label that clusters stages within a section
+// (e.g. "Evaluate", "Buy", "Set Up" grouping multiple stage columns)
+// ---------------------------------------------------------------------------
+export interface StageGroup {
+  id: string;
+  name: string;
+  sectionId: string;
   order: number;
 }
 
@@ -29,14 +44,19 @@ export interface JourneyStage {
   id: string;
   name: string;
   sectionId: string;
+  stageGroupId?: string;
   description?: string;
+  /** Custom background color for the stage pill (CSS color string). */
+  bgColor?: string;
+  /** Custom text color for the stage pill (CSS color string). */
+  textColor?: string;
   order: number;
 }
 
 // ---------------------------------------------------------------------------
 // Phase — sub-step within a stage (e.g. "Initial contact", "Follow-up")
 // A stage may have zero or more phases. When phases exist, touchpoints
-// reference phaseIds instead of stageId directly.
+// reference phaseId instead of stageId directly.
 // ---------------------------------------------------------------------------
 export interface Phase {
   id: string;
@@ -44,7 +64,13 @@ export interface Phase {
   stageId: string;
   /** Phases with the same groupId form a PhaseRow (one per stage). */
   groupId?: string;
+  /** Custom label for the phase group row (defaults to "Phase"). Stored on all phases in the group. */
+  groupLabel?: string;
   description?: string;
+  /** Custom background color for the phase pill (CSS color string). */
+  bgColor?: string;
+  /** Custom text color for the phase pill (CSS color string). */
+  textColor?: string;
   order: number;
 }
 
@@ -74,8 +100,8 @@ export interface Touchpoint {
   channelType?: string;
   stageId: string;
   swimlaneId: string;
-  /** Optional phase IDs (comma-separated in Excel). Empty = stage-level. */
-  phaseIds: string[];
+  /** Phase this touchpoint belongs to. Undefined for orphan (stage-level) swimlane touchpoints. */
+  phaseId?: string;
   description?: string;
   iconColor?: string;
   order: number;
@@ -104,7 +130,8 @@ export interface Callout {
   id: string;
   stageId: string;
   swimlaneId?: string;
-  phaseIds: string[];
+  /** Which phase sub-cells to display in. Empty / absent = span ALL phases in the stage. */
+  phaseIds?: string[];
   type: CalloutType;
   title: string;
   description?: string;
@@ -156,6 +183,7 @@ export interface MotivationMap {
 // ---------------------------------------------------------------------------
 export interface Blueprint {
   sections: Section[];
+  stageGroups: StageGroup[];
   journeyStages: JourneyStage[];
   phases: Phase[];
   swimlanes: Swimlane[];

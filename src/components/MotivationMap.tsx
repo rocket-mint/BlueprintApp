@@ -69,6 +69,7 @@ interface Props {
 export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPoint, onAddPoint }: Props) {
   const gradientId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
+  const hasMoved = useRef(false);
   const [hovered, setHovered] = useState<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
 
@@ -122,14 +123,14 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     return (relX / rect.width) * MM_VIEW_W;
   }, []);
 
-  // Find closest column index from SVG X coordinate
+  // Find closest column index from SVG X coordinate (nearest-column-center rule)
   const xToColIndex = useCallback((svgX: number) => {
     if (columns.length <= 1) return 0;
     const fraction = (svgX - MM_M.left) / innerW;
     return Math.max(0, Math.min(columns.length - 1, Math.round(fraction * (columns.length - 1))));
   }, [columns.length, innerW]);
 
-  // Click on empty chart space to add a new point
+  // Click on empty chart space to add a new point (nearest column center wins)
   const handleChartClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!editMode || !onAddPoint) return;
     // Don't add if clicking on a circle
@@ -146,6 +147,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     if (!editMode || !onUpdateScore) return;
     e.preventDefault();
     e.stopPropagation();
+    hasMoved.current = false;
     setDragging(i);
     (e.target as Element).setPointerCapture(e.pointerId);
   }, [editMode, onUpdateScore]);
@@ -154,6 +156,7 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
     if (dragging === null || !onUpdateScore) return;
     const pt = points[dragging];
     if (!pt) return;
+    hasMoved.current = true;
     const svgY = eventToSvgY(e);
     const newScore = yToScore(svgY);
     onUpdateScore(pt.colIndex, pt.scoreIndex, Math.round(newScore * 100) / 100);
@@ -236,23 +239,24 @@ export function MotivationMap({ columns, meta, editMode, onUpdateScore, onEditPo
 
         {/* Data point dots */}
         {points.map((pt, i) => {
-          const isActive = hovered === i || dragging === i;
+          const isDragging = dragging === i;
+          const isActive = hovered === i || isDragging;
           return (
             <circle
               key={i}
               cx={pt.x}
               cy={pt.y}
               r={isActive ? 10 : 7}
-              fill={dragging === i ? "#5a4fcf" : isActive ? "#6c5ce7" : "#8073ff"}
+              fill={isDragging ? "#5a4fcf" : isActive ? "#6c5ce7" : "#8073ff"}
               stroke={isActive ? "white" : "none"}
               strokeWidth={isActive ? 2.5 : 0}
               className={editMode ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}
-              style={{ transition: dragging === i ? "none" : "all 150ms" }}
+              style={{ transition: isDragging ? "none" : "all 150ms" }}
               onMouseEnter={() => setHovered(i)}
               onMouseLeave={() => setHovered(null)}
               onPointerDown={(e) => handlePointerDown(i, e)}
               onClick={(e) => {
-                if (editMode && onEditPoint) {
+                if (editMode && onEditPoint && !hasMoved.current) {
                   e.stopPropagation();
                   onEditPoint(pt.colIndex, pt.scoreIndex);
                 }

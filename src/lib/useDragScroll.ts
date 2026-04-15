@@ -29,8 +29,8 @@ export function useDragScroll<T extends HTMLElement>() {
       const t = e.target as HTMLElement | null;
       if (!t) return;
       if (t.closest("button, a, input, select, textarea, label")) return;
-      // Skip drag on SVG circles (motivation map data points) to allow point dragging
-      if (t instanceof SVGElement && t.closest("circle")) return;
+      // Skip all SVG elements — motivation map handles its own pointer events
+      if (t instanceof SVGElement) return;
       isDown = true;
       moved = 0;
       startX = e.clientX;

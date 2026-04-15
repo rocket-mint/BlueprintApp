@@ -37,8 +37,8 @@ export function Blueprint() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="rounded-2xl bg-neutral-sand-50 p-2 sm:p-3">
+    <div className="flex w-max min-w-full flex-col gap-6">
+      <div className="w-max min-w-full rounded-2xl bg-neutral-sand-50 p-2 sm:p-3">
         <BlueprintCanvas
           blueprint={blueprint}
           stages={orderedStages}
@@ -49,6 +49,11 @@ export function Blueprint() {
           onEditEntity={(entity) => setEditingEntity(entity)}
           onDeleteEntity={(type, id) => dispatch({ type: `DELETE_${type.toUpperCase()}`, id } as any)}
           onUpdateMotivationMap={(id, stageScores) => dispatch({ type: "UPDATE_MOTIVATION_MAP", id, changes: { stageScores } })}
+          onUpdateSection={(id, changes) => dispatch({ type: "UPDATE_SECTION", id, changes })}
+          onUpdatePhaseGroupLabel={(_groupId, label, phases) =>
+            phases.forEach((p) => dispatch({ type: "UPDATE_PHASE", id: p.id, changes: { groupLabel: label } }))
+          }
+          onReorderRows={(update) => dispatch({ type: "BATCH_REORDER", ...update })}
           onToggleCollapse={(id) => toggleSwimlaneCollapse(id)}
           onToggleSectionCollapse={(id) => toggleSectionCollapse(id)}
         />

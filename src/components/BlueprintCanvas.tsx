@@ -4,11 +4,13 @@
 // (stage headers, phase headers, swimlane rows, motivation map) share ONE
 // CSS Grid so columns align and expand together.
 
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type {
   Blueprint,
   JourneyStage,
+  Phase,
   Section,
+  StageGroup,
   Touchpoint,
   Callout,
   Swimlane,
@@ -16,6 +18,7 @@ import type {
 } from "../types/blueprint";
 import type { Media } from "./MediaModal";
 import { SwimlaneCell } from "./SwimlaneCell";
+import { CalloutBadge } from "./CalloutBadge";
 import { MotivationMap, MM_LEVELS, MM_VIEW_H, MM_M } from "./MotivationMap";
 import { InsightsSection } from "./InsightsSection";
 import { EditButton, DeleteButton, AddButton } from "./EditControls";
@@ -23,6 +26,7 @@ import type { EditingEntity, EditableEntityType } from "../context/BlueprintCont
 import {
   gridTemplateFor,
   minWidthFor,
+  LABEL_COL_W,
   type GridColumn,
 } from "../lib/blueprintLayout";
 import { stagesForSection } from "../utils/dataUtils";
@@ -55,6 +59,34 @@ function Chevron({ open, size = 14 }: { open: boolean; size?: number }) {
   );
 }
 
+/** Six-dot grip icon shown on draggable rows in edit mode. */
+function GripHandle({
+  onDragStart,
+  onDragEnd,
+}: {
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className="shrink-0 cursor-grab touch-none select-none px-0.5 text-neutral-gray-300 hover:text-neutral-gray-500 active:cursor-grabbing"
+      title="Drag to reorder"
+    >
+      <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+        <circle cx="3" cy="3"  r="1.3" />
+        <circle cx="7" cy="3"  r="1.3" />
+        <circle cx="3" cy="8"  r="1.3" />
+        <circle cx="7" cy="8"  r="1.3" />
+        <circle cx="3" cy="13" r="1.3" />
+        <circle cx="7" cy="13" r="1.3" />
+      </svg>
+    </div>
+  );
+}
+
 function touchpointsForColumn(
   touchpoints: Touchpoint[],
   swimlaneId: string,
@@ -63,12 +95,13 @@ function touchpointsForColumn(
 ): Touchpoint[] {
   const result: Touchpoint[] = [];
   for (const tp of touchpoints) {
-    if (tp.swimlaneId !== swimlaneId || tp.stageId !== col.stageId) continue;
-    // If swimlane belongs to a phase, only show touchpoints with that phaseId
+    if (tp.swimlaneId !== swimlaneId) continue;
     if (phaseId) {
-      if (tp.phaseIds.includes(phaseId)) result.push(tp);
+      // Phase-group cell: match by individual phaseId
+      if (tp.phaseId === phaseId) result.push(tp);
     } else {
-      result.push(tp);
+      // Orphan swimlane cell: match by stageId
+      if (tp.stageId === col.stageId) result.push(tp);
     }
   }
   return result.sort((a, b) => a.order - b.order);
@@ -82,15 +115,68 @@ function calloutsForColumn(
 ): Callout[] {
   const result: Callout[] = [];
   for (const c of callouts) {
-    if (c.swimlaneId && c.swimlaneId !== swimlaneId) continue;
-    if (c.stageId !== col.stageId) continue;
+    if (c.swimlaneId !== swimlaneId) continue;
     if (phaseId) {
-      if (c.phaseIds.length === 0 || c.phaseIds.includes(phaseId)) result.push(c);
+      if (c.stageId !== col.stageId) continue;
+      // Only single-phase-specific callouts go inside the sub-cell.
+      // Multi-phase callouts (phaseIds.length > 1) are rendered as a spanning strip below.
+      // Spanning callouts (phaseIds absent/empty) are also rendered separately below all sub-cells.
+      const ids = c.phaseIds;
+      if (ids && ids.length === 1 && ids.includes(phaseId)) result.push(c);
     } else {
-      result.push(c);
+      // Orphan swimlane cell: match by stageId, no phase filter
+      if (c.stageId === col.stageId) result.push(c);
     }
   }
   return result.sort((a, b) => a.order - b.order);
+}
+
+/** Callouts with no specific phaseIds that span ALL phases of a stage in a phase-group lane. */
+function spanningCalloutsFor(callouts: Callout[], swimlaneId: string, stageId: string): Callout[] {
+  return callouts
+    .filter(
+      (c) =>
+        c.swimlaneId === swimlaneId &&
+        c.stageId === stageId &&
+        (!c.phaseIds || c.phaseIds.length === 0),
+    )
+    .sort((a, b) => a.order - b.order);
+}
+
+/** Callouts that target 2+ specific phases — rendered as a single spanning strip below sub-cells. */
+function multiPhaseCalloutsFor(callouts: Callout[], swimlaneId: string, stageId: string): Callout[] {
+  return callouts
+    .filter(
+      (c) =>
+        c.swimlaneId === swimlaneId &&
+        c.stageId === stageId &&
+        c.phaseIds != null &&
+        c.phaseIds.length > 1,
+    )
+    .sort((a, b) => a.order - b.order);
+}
+
+// ---------------------------------------------------------------------------
+// Drag types
+// ---------------------------------------------------------------------------
+
+interface DragRowProps {
+  isDragTarget: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: () => void;
+  onDragLeave: () => void;
+  onDragEnd: () => void;
+}
+
+/** A section-level row — either an orphan swimlane or a phase group. */
+type SectionItem =
+  | { kind: "swimlane"; id: string; order: number; swimlane: Swimlane }
+  | { kind: "group";    id: string; order: number; phases: Phase[] };
+
+interface ReorderUpdate {
+  swimlaneOrders?: Array<{ id: string; order: number }>;
+  phaseOrders?: Array<{ id: string; order: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +192,9 @@ interface Props {
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
   onUpdateMotivationMap?: (id: string, stageScores: MotivationMapData["stageScores"]) => void;
+  onUpdateSection?: (id: string, changes: { name?: string; description?: string; stageLabel?: string; stageGroupLabel?: string }) => void;
+  onUpdatePhaseGroupLabel?: (groupId: string, label: string, phases: Phase[]) => void;
+  onReorderRows?: (update: ReorderUpdate) => void;
   onToggleCollapse: (id: string) => void;
   onToggleSectionCollapse: (id: string) => void;
 }
@@ -124,6 +213,9 @@ function SectionCard({
   onEditEntity,
   onDeleteEntity,
   onUpdateMotivationMap,
+  onUpdateSection,
+  onUpdatePhaseGroupLabel,
+  onReorderRows,
   onToggleCollapse,
   onToggleSectionCollapse,
 }: {
@@ -137,40 +229,313 @@ function SectionCard({
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
   onUpdateMotivationMap?: (id: string, stageScores: MotivationMapData["stageScores"]) => void;
+  onUpdateSection?: (id: string, changes: { name?: string; description?: string; stageLabel?: string; stageGroupLabel?: string }) => void;
+  onUpdatePhaseGroupLabel?: (groupId: string, label: string, phases: Phase[]) => void;
+  onReorderRows?: (update: ReorderUpdate) => void;
   onToggleCollapse: (id: string) => void;
   onToggleSectionCollapse: (id: string) => void;
 }) {
-  // One grid column per stage
+  // ── Grid layout ──
   const gridColumns = useMemo<GridColumn[]>(
     () => sectionStages.map((s) => ({ stageId: s.id, phase: null })),
     [sectionStages],
   );
-
-  // When in edit mode, add one extra narrow column for the "+ Stage" button
   const gridColCount = editMode ? gridColumns.length + 1 : gridColumns.length;
+
   const grid: React.CSSProperties = editMode
     ? {
         display: "grid",
-        gridTemplateColumns: `150px repeat(${gridColumns.length}, minmax(180px, max-content)) auto`,
+        gridTemplateColumns: `${LABEL_COL_W}px repeat(${gridColumns.length}, minmax(180px, max-content)) auto`,
         gap: "14px",
       }
     : gridTemplateFor(gridColumns.length);
   const sectionMinWidth = minWidthFor(gridColumns.length);
   const totalCols = gridColCount + 1;
 
-  // All swimlanes in order (moments + motivation_map mixed together)
-  const swimlanes = blueprint.swimlanes
-    .filter((s) => s.sectionId === section.id)
-    .sort((a, b) => a.order - b.order);
+  // ── Stage group spans ──
+  const sectionStageGroups = useMemo(
+    () => (blueprint.stageGroups ?? []).filter((g) => g.sectionId === section.id),
+    [blueprint.stageGroups, section.id],
+  );
+  const hasStageGroups = sectionStageGroups.length > 0 ||
+    sectionStages.some((s) => s.stageGroupId);
 
-  // Motivation map lookup
+  // Build contiguous spans for the group header row
+  const groupSpans = useMemo(() => {
+    const groupMap = new Map((blueprint.stageGroups ?? []).map((g) => [g.id, g]));
+    const spans: Array<{ group: StageGroup | null; count: number; startIndex: number }> = [];
+    let current: { group: StageGroup | null; count: number; startIndex: number } | null = null;
+    sectionStages.forEach((stage, i) => {
+      const group = stage.stageGroupId ? (groupMap.get(stage.stageGroupId) ?? null) : null;
+      if (current && current.group?.id === (group?.id ?? null) && (current.group === null) === (group === null)) {
+        current.count++;
+      } else {
+        if (current) spans.push(current);
+        current = { group, count: 1, startIndex: i };
+      }
+    });
+    if (current) spans.push(current);
+    return spans;
+  }, [sectionStages, blueprint.stageGroups]);
+
+  // ── Motivation map lookup ──
   const motivationMapByLane = useMemo(() => {
     const m = new Map<string, MotivationMapData>();
     for (const mm of blueprint.motivationMaps) m.set(mm.swimlaneId, mm);
     return m;
   }, [blueprint.motivationMaps]);
 
-  // ── Collapsed ──
+  // ── Derived data ──
+  const swimlanes = useMemo(
+    () =>
+      blueprint.swimlanes
+        .filter((s) => s.sectionId === section.id)
+        .sort((a, b) => a.order - b.order),
+    [blueprint.swimlanes, section.id],
+  );
+
+  const sectionPhases = useMemo(
+    () =>
+      blueprint.phases
+        .filter((p) => sectionStages.some((s) => s.id === p.stageId))
+        .sort((a, b) => a.order - b.order),
+    [blueprint.phases, sectionStages],
+  );
+
+  const groupIds = useMemo(
+    () => [...new Set(sectionPhases.map((p) => p.groupId ?? p.id))],
+    [sectionPhases],
+  );
+
+  const phaseToGroup = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of sectionPhases) m.set(p.id, p.groupId ?? p.id);
+    return m;
+  }, [sectionPhases]);
+
+  // Per-phase minimum pixel width, driven by the max touchpoint count for that phase
+  // across all swimlanes in its group. Both phase pills and sub-cells use this width
+  // so they are guaranteed to align.
+  const CARD_W = 176;
+  const CARD_GAP = 8;
+  const phaseMinWidths = useMemo(() => {
+    const widths = new Map<string, number>();
+    for (const phase of sectionPhases) {
+      const groupId = phase.groupId ?? phase.id;
+      const groupSwimlaneIds = swimlanes
+        .filter((sl) => sl.phaseId === groupId)
+        .map((sl) => sl.id);
+      const countsPerSwimlane = groupSwimlaneIds.map(
+        (slId) =>
+          blueprint.touchpoints.filter(
+            (tp) => tp.phaseId === phase.id && tp.swimlaneId === slId,
+          ).length,
+      );
+      const maxCount = Math.max(1, ...countsPerSwimlane);
+      widths.set(phase.id, maxCount * CARD_W + (maxCount - 1) * CARD_GAP);
+    }
+    return widths;
+  }, [sectionPhases, swimlanes, blueprint.touchpoints]);
+
+  const { byGroup, orphanSwimlanes } = useMemo(() => {
+    const byGroup = new Map<string, Swimlane[]>();
+    const orphanSwimlanes: Swimlane[] = [];
+    for (const sl of swimlanes) {
+      if (sl.phaseId) {
+        const gid = phaseToGroup.get(sl.phaseId) ?? sl.phaseId;
+        const arr = byGroup.get(gid) ?? [];
+        arr.push(sl);
+        byGroup.set(gid, arr);
+      } else {
+        orphanSwimlanes.push(sl);
+      }
+    }
+    return { byGroup, orphanSwimlanes };
+  }, [swimlanes, phaseToGroup]);
+
+  // ── Merged ordered section items (orphan swimlanes + phase groups) ──
+  const sectionItems = useMemo((): SectionItem[] => {
+    const items: SectionItem[] = [
+      ...orphanSwimlanes.map((sl) => ({
+        kind: "swimlane" as const,
+        id: sl.id,
+        order: sl.order,
+        swimlane: sl,
+      })),
+      ...groupIds.map((gid) => {
+        const phases = sectionPhases.filter((p) => (p.groupId ?? p.id) === gid);
+        const minOrder = phases.length ? Math.min(...phases.map((p) => p.order)) : 0;
+        return { kind: "group" as const, id: gid, order: minOrder, phases };
+      }),
+    ];
+    return items.sort((a, b) => a.order - b.order);
+  }, [orphanSwimlanes, groupIds, sectionPhases]);
+
+  // ── Drag state ──
+  const [sectionDragId, setSectionDragId]         = useState<string | null>(null);
+  const [sectionDragOverId, setSectionDragOverId]   = useState<string | null>(null);
+  const [groupDragSl, setGroupDragSl]             = useState<{ gid: string; slId: string } | null>(null);
+  const [groupDragOverSlId, setGroupDragOverSlId]   = useState<string | null>(null);
+
+  // ── Post-drop highlight ──
+  const [justMovedId, setJustMovedId] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function flashMoved(id: string) {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    setJustMovedId(id);
+    highlightTimer.current = setTimeout(() => setJustMovedId(null), 1400);
+  }
+
+  // ── Section-level reorder ──
+  function handleSectionDrop(targetId: string) {
+    const dragged = sectionDragId;
+    setSectionDragId(null);
+    setSectionDragOverId(null);
+    if (!dragged || dragged === targetId || !onReorderRows) return;
+
+    const next = [...sectionItems];
+    const from = next.findIndex((i) => i.id === dragged);
+    const to   = next.findIndex((i) => i.id === targetId);
+    if (from === -1 || to === -1) return;
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+
+    const swimlaneOrders: Array<{ id: string; order: number }> = [];
+    const phaseOrders: Array<{ id: string; order: number }>    = [];
+    next.forEach((item, i) => {
+      if (item.kind === "swimlane") {
+        swimlaneOrders.push({ id: item.id, order: i * 100 });
+      } else {
+        item.phases.forEach((p) => phaseOrders.push({ id: p.id, order: i * 100 }));
+      }
+    });
+    onReorderRows({ swimlaneOrders, phaseOrders });
+    flashMoved(dragged);
+  }
+
+  // ── Group-swimlane reorder ──
+  function handleGroupSwimlaneDrop(gid: string, targetSlId: string) {
+    const dragged = groupDragSl;
+    setGroupDragSl(null);
+    setGroupDragOverSlId(null);
+    if (!dragged || dragged.gid !== gid || dragged.slId === targetSlId || !onReorderRows) return;
+
+    const lanes = [...(byGroup.get(gid) ?? [])];
+    const from  = lanes.findIndex((sl) => sl.id === dragged.slId);
+    const to    = lanes.findIndex((sl) => sl.id === targetSlId);
+    if (from === -1 || to === -1) return;
+    const [moved] = lanes.splice(from, 1);
+    lanes.splice(to, 0, moved);
+    onReorderRows({ swimlaneOrders: lanes.map((sl, i) => ({ id: sl.id, order: i * 10 })) });
+    flashMoved(dragged.slId);
+  }
+
+  // ── Swimlane renderer ──
+  function renderSwimlane(sl: Swimlane, dragProps?: DragRowProps, isJustMoved = false) {
+    const isCollapsed = collapsedSwimlanes.has(sl.id);
+    const dropClass = dragProps?.isDragTarget ? "border-b-2 border-brand-cyan-500" : "";
+    const movedClass = isJustMoved
+      ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60 transition-all duration-700"
+      : "transition-all duration-700";
+
+    if (isCollapsed) {
+      return (
+        <div
+          key={sl.id}
+          style={{ gridColumn: `1 / ${totalCols + 1}` }}
+          className={dropClass}
+          onDragOver={dragProps?.onDragOver}
+          onDrop={dragProps ? () => dragProps.onDrop() : undefined}
+          onDragLeave={dragProps?.onDragLeave}
+        >
+          <button
+            type="button"
+            onClick={() => onToggleCollapse(sl.id)}
+            title={`Expand ${sl.name}`}
+            className={`mt-1 flex w-full items-center gap-2 rounded-xl border border-neutral-gray-100 px-4 py-2 text-left text-neutral-gray-700 hover:bg-neutral-gray-50 ${movedClass}`}
+          >
+            {dragProps && (
+              <GripHandle onDragStart={dragProps.onDragStart} onDragEnd={dragProps.onDragEnd} />
+            )}
+            <Chevron open={false} size={10} />
+            <span className="text-[14px] font-bold leading-tight text-brand-navy-1000">{sl.name}</span>
+          </button>
+        </div>
+      );
+    }
+
+    if (sl.type === "motivation_map") {
+      return (
+        <MotivationMapGridRow
+          key={sl.id}
+          swimlane={sl}
+          gridColumns={gridColumns}
+          meta={motivationMapByLane.get(sl.id)}
+          editMode={editMode}
+          isJustMoved={isJustMoved}
+          onToggleCollapse={() => onToggleCollapse(sl.id)}
+          onUpdateMotivationScore={(colIndex, scoreIndex, newScore) => {
+            const mm = motivationMapByLane.get(sl.id);
+            if (!mm || !onUpdateMotivationMap) return;
+            const col = gridColumns[colIndex];
+            const key = col.phase?.id ?? col.stageId;
+            const scores = [...(mm.stageScores[key] ?? [{ score: 0.33 }])];
+            if (scoreIndex < scores.length) {
+              scores[scoreIndex] = { ...scores[scoreIndex], score: newScore };
+            }
+            onUpdateMotivationMap(mm.id, { ...mm.stageScores, [key]: scores });
+          }}
+          onEditMotivationPoint={(colIndex, scoreIndex) => {
+            const mm = motivationMapByLane.get(sl.id);
+            if (!mm) return;
+            const col = gridColumns[colIndex];
+            const key = col.phase?.id ?? col.stageId;
+            onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${scoreIndex}` });
+          }}
+          onAddMotivationPoint={(colIndex, score) => {
+            const mm = motivationMapByLane.get(sl.id);
+            const col = gridColumns[colIndex];
+            const key = col.phase?.id ?? col.stageId;
+            if (!mm) {
+              const newId = `mm-${sl.id}`;
+              onEditEntity({ type: "motivation_point", id: newId, parentId: `${key}:0:${score}:${sl.id}`, isNew: true });
+              return;
+            }
+            const existingCount = (mm.stageScores[key] ?? []).length;
+            onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${existingCount}:${score}`, isNew: true });
+          }}
+          dragProps={dragProps}
+        />
+      );
+    }
+
+    // For phase-group swimlanes, pass the group's phases so cells subdivide per phase.
+    const groupPhases = sl.phaseId
+      ? sectionPhases.filter((p) => (p.groupId ?? p.id) === sl.phaseId)
+      : undefined;
+
+    return (
+      <MomentsGridRow
+        key={sl.id}
+        swimlane={sl}
+        gridColumns={gridColumns}
+        touchpoints={blueprint.touchpoints}
+        callouts={blueprint.callouts}
+        touchpointMedia={touchpointMedia}
+        editMode={editMode}
+        isJustMoved={isJustMoved}
+        onEditEntity={onEditEntity}
+        onDeleteEntity={onDeleteEntity}
+        onToggleCollapse={() => onToggleCollapse(sl.id)}
+        dragProps={dragProps}
+        groupPhases={groupPhases}
+        phaseMinWidths={phaseMinWidths}
+      />
+    );
+  }
+
+  // ── Collapsed section ──
   if (collapsed) {
     return (
       <section className="rounded-[20px] bg-white shadow-[0_2px_10px_0_rgba(15,23,36,0.05)]">
@@ -200,25 +565,43 @@ function SectionCard({
     >
       {/* Section title */}
       <div className="group mb-8 flex items-start gap-3">
-        <button
-          type="button"
-          onClick={() => onToggleSectionCollapse(section.id)}
-          className="flex flex-1 items-start gap-3 text-left transition-opacity hover:opacity-80"
-          title={`Collapse ${section.name}`}
-        >
-          <span className="mt-2 text-neutral-gray-500"><Chevron open /></span>
-          <div className="flex flex-col gap-1">
-            <h2 className="text-xl font-light leading-tight text-brand-navy-1000 sm:text-2xl">
-              {section.name}
-            </h2>
-            {section.description && (
-              <p className="text-sm text-neutral-gray-600">{section.description}</p>
-            )}
+        {editMode ? (
+          <div className="flex flex-1 flex-col gap-1.5">
+            <input
+              type="text"
+              value={section.name}
+              onChange={(e) => onUpdateSection?.(section.id, { name: e.target.value })}
+              placeholder="Section name"
+              className="w-full rounded-md border border-neutral-gray-200 bg-white px-3 py-1.5 text-xl font-light text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20 sm:text-2xl"
+            />
+            <input
+              type="text"
+              value={section.description ?? ""}
+              onChange={(e) => onUpdateSection?.(section.id, { description: e.target.value })}
+              placeholder="Section description (optional)"
+              className="w-full rounded-md border border-neutral-gray-200 bg-white px-3 py-1.5 text-sm text-neutral-gray-600 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
+            />
           </div>
-        </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onToggleSectionCollapse(section.id)}
+            className="flex flex-1 items-start gap-3 text-left transition-opacity hover:opacity-80"
+            title={`Collapse ${section.name}`}
+          >
+            <span className="mt-2 text-neutral-gray-500"><Chevron open /></span>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-xl font-light leading-tight text-brand-navy-1000 sm:text-2xl">
+                {section.name}
+              </h2>
+              {section.description && (
+                <p className="text-sm text-neutral-gray-600">{section.description}</p>
+              )}
+            </div>
+          </button>
+        )}
         {editMode && (
-          <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-            <EditButton type="section" id={section.id} onClick={onEditEntity} />
+          <div className="flex shrink-0 gap-0.5">
             <DeleteButton type="section" id={section.id} onConfirm={onDeleteEntity} />
           </div>
         )}
@@ -227,20 +610,88 @@ function SectionCard({
       {/* ══ Single grid ══ */}
       <div style={grid}>
 
+        {/* ── Stage Group headers (shown when any stage group exists in section) ── */}
+        {hasStageGroups && (
+          <div style={{ display: "contents" }}>
+            {/* Col 1: label */}
+            <div style={{ gridColumn: 1 }} className="flex items-center pr-2">
+              {editMode ? (
+                <input
+                  type="text"
+                  value={section.stageGroupLabel ?? "Group"}
+                  onChange={(e) => onUpdateSection?.(section.id, { stageGroupLabel: e.target.value })}
+                  className="w-full border-b border-neutral-gray-300 bg-transparent text-[14px] font-bold capitalize text-brand-navy-1000 outline-none focus:border-brand-cyan-500"
+                  placeholder="Group"
+                />
+              ) : (
+                <span className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">
+                  {section.stageGroupLabel || "Group"}
+                </span>
+              )}
+            </div>
+            {/* Spanning cells — one per contiguous run of same group (or null = ungrouped) */}
+            {groupSpans.map((span, i) => {
+              // Grid cols: label=1, stages start at 2
+              const startCol = span.startIndex + 2;
+              const endCol = startCol + span.count;
+              return (
+                <div
+                  key={i}
+                  style={{ gridColumn: `${startCol} / ${endCol}` }}
+                  className={span.group
+                    ? "group/sg flex items-center justify-center rounded-md bg-neutral-gray-200 px-4 py-3"
+                    : ""}
+                >
+                  {span.group && (
+                    <>
+                      <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight text-brand-navy-1000">
+                        {span.group.name}
+                      </span>
+                      {editMode && (
+                        <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover/sg:opacity-100">
+                          <EditButton type="stage_group" id={span.group.id} onClick={onEditEntity} />
+                          <DeleteButton type="stage_group" id={span.group.id} onConfirm={onDeleteEntity} />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {/* Edit column */}
+            {editMode && (
+              <div className="flex items-center">
+                <AddButton type="stage_group" label="Group" parentId={section.id} onClick={onEditEntity} />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Stage headers ── */}
         <div style={{ display: "contents" }}>
           <div className="flex items-center pr-2">
-            <span className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">
-              Stage
-            </span>
+            {editMode ? (
+              <input
+                type="text"
+                value={section.stageLabel ?? "Stage"}
+                onChange={(e) => onUpdateSection?.(section.id, { stageLabel: e.target.value })}
+                className="w-full border-b border-neutral-gray-300 bg-transparent text-[14px] font-bold capitalize text-brand-navy-1000 outline-none focus:border-brand-cyan-500"
+                placeholder="Stage"
+              />
+            ) : (
+              <span className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">
+                {section.stageLabel || "Stage"}
+              </span>
+            )}
           </div>
           {sectionStages.map((s) => (
             <div
               key={s.id}
-              className="group flex items-center justify-center rounded-md bg-neutral-gray-200 px-4 py-3"
+              className="group flex items-center justify-center rounded-md px-4 py-3"
+              style={{ backgroundColor: s.bgColor || "#E5E7EB", color: s.textColor || "#0F1724" }}
               title={s.description ?? undefined}
             >
-              <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight text-brand-navy-1000">
+              <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight">
                 {s.name}
               </span>
               {editMode && (
@@ -258,170 +709,148 @@ function SectionCard({
           )}
         </div>
 
-        {/* ── PhaseGroups ── */}
-        {(() => {
-          // Group phases by groupId
-          const sectionPhases = blueprint.phases
-            .filter((p) => sectionStages.some((s) => s.id === p.stageId))
-            .sort((a, b) => a.order - b.order);
-
-          const groupIds = [...new Set(sectionPhases.map((p) => p.groupId ?? p.id))];
-
-          // Group swimlanes by phaseId (which references groupId)
-          const swimlanesByGroup = new Map<string, typeof swimlanes>();
-          const orphanSwimlanes: typeof swimlanes = [];
-          for (const sl of swimlanes) {
-            if (sl.phaseId) {
-              const arr = swimlanesByGroup.get(sl.phaseId) ?? [];
-              arr.push(sl);
-              swimlanesByGroup.set(sl.phaseId, arr);
-            } else {
-              orphanSwimlanes.push(sl);
-            }
+        {/* ── Section items in merged order (orphan swimlanes + phase groups) ── */}
+        {sectionItems.map((item) => {
+          if (item.kind === "swimlane") {
+            // Section-level orphan swimlane — draggable among section items
+            const dragProps: DragRowProps | undefined = editMode && !groupDragSl
+              ? {
+                  isDragTarget: sectionDragOverId === item.id,
+                  onDragStart: (e) => {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", item.id);
+                    setSectionDragId(item.id);
+                  },
+                  onDragOver: (e) => {
+                    e.preventDefault();
+                    if (sectionDragId) setSectionDragOverId(item.id);
+                  },
+                  onDrop: () => handleSectionDrop(item.id),
+                  onDragLeave: () => setSectionDragOverId((prev) => prev === item.id ? null : prev),
+                  onDragEnd: () => { setSectionDragId(null); setSectionDragOverId(null); },
+                }
+              : undefined;
+            return renderSwimlane(item.swimlane, dragProps, justMovedId === item.id);
           }
 
-          const renderSwimlane = (sl: Swimlane) => {
-            const isCollapsed = collapsedSwimlanes.has(sl.id);
-            if (isCollapsed) {
-              return (
-                <div key={sl.id} style={{ gridColumn: `1 / ${totalCols + 1}` }}>
-                  <button
-                    type="button"
-                    onClick={() => onToggleCollapse(sl.id)}
-                    title={`Expand ${sl.name}`}
-                    className="mt-1 flex w-full items-center gap-2 rounded-xl border border-neutral-gray-100 px-4 py-2 text-left text-neutral-gray-700 transition-colors hover:bg-neutral-gray-50"
-                  >
-                    <Chevron open={false} size={10} />
-                    <span className="text-[14px] font-bold leading-tight text-brand-navy-1000">{sl.name}</span>
-                  </button>
-                </div>
-              );
-            }
-            if (sl.type === "motivation_map") {
-              return (
-                <MotivationMapGridRow
-                  key={sl.id}
-                  swimlane={sl}
-                  gridColumns={gridColumns}
-                  meta={motivationMapByLane.get(sl.id)}
-                  editMode={editMode}
-                  onToggleCollapse={() => onToggleCollapse(sl.id)}
-                  onUpdateMotivationScore={(colIndex, scoreIndex, newScore) => {
-                    const mm = motivationMapByLane.get(sl.id);
-                    if (!mm || !onUpdateMotivationMap) return;
-                    const col = gridColumns[colIndex];
-                    const key = col.phase?.id ?? col.stageId;
-                    const scores = [...(mm.stageScores[key] ?? [{ score: 0.33 }])];
-                    if (scoreIndex < scores.length) {
-                      scores[scoreIndex] = { ...scores[scoreIndex], score: newScore };
-                    }
-                    onUpdateMotivationMap(mm.id, { ...mm.stageScores, [key]: scores });
-                  }}
-                  onEditMotivationPoint={(colIndex, scoreIndex) => {
-                    const mm = motivationMapByLane.get(sl.id);
-                    if (!mm) return;
-                    const col = gridColumns[colIndex];
-                    const key = col.phase?.id ?? col.stageId;
-                    onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${scoreIndex}` });
-                  }}
-                  onAddMotivationPoint={(colIndex, score) => {
-                    const mm = motivationMapByLane.get(sl.id);
-                    if (!mm) return;
-                    const col = gridColumns[colIndex];
-                    const key = col.phase?.id ?? col.stageId;
-                    const existingCount = (mm.stageScores[key] ?? []).length;
-                    onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${existingCount}:${score}`, isNew: true });
-                  }}
-                />
-              );
-            }
-            return (
-              <MomentsGridRow
-                key={sl.id}
-                swimlane={sl}
-                gridColumns={gridColumns}
-                touchpoints={blueprint.touchpoints}
-                callouts={blueprint.callouts}
-                touchpointMedia={touchpointMedia}
-                editMode={editMode}
-                onEditEntity={onEditEntity}
-                onDeleteEntity={onDeleteEntity}
-                onToggleCollapse={() => onToggleCollapse(sl.id)}
-              />
-            );
-          };
+          // Phase group — draggable as a whole among section items;
+          // swimlanes within the group are independently reorderable.
+          const groupSwimlanes  = byGroup.get(item.id) ?? [];
+          const isGroupDragTarget = editMode && !!sectionDragId && sectionDragOverId === item.id;
+          const isGroupJustMoved  = justMovedId === item.id;
 
           return (
-            <>
-              {groupIds.map((gid) => {
-                const groupPhases = sectionPhases.filter((p) => (p.groupId ?? p.id) === gid);
-                const groupSwimlanes = swimlanesByGroup.get(gid) ?? [];
+            <React.Fragment key={item.id}>
+              {/* PhaseRow */}
+              <div style={{ display: "contents" }}>
+                {/* Column-1 label — drag handle for the whole group */}
+                <div
+                  style={{ gridColumn: 1 }}
+                  className={[
+                    "flex items-center gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
+                    isGroupDragTarget ? "border-b-2 border-brand-cyan-500" : "",
+                    isGroupJustMoved  ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
+                  ].join(" ")}
+                  onDragOver={editMode && sectionDragId ? (e) => { e.preventDefault(); setSectionDragOverId(item.id); } : undefined}
+                  onDrop={editMode ? () => handleSectionDrop(item.id) : undefined}
+                  onDragLeave={editMode ? () => setSectionDragOverId((prev) => prev === item.id ? null : prev) : undefined}
+                >
+                  {editMode && (
+                    <GripHandle
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", item.id);
+                        setSectionDragId(item.id);
+                      }}
+                      onDragEnd={() => { setSectionDragId(null); setSectionDragOverId(null); }}
+                    />
+                  )}
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={item.phases[0]?.groupLabel ?? "Phase"}
+                      onChange={(e) => onUpdatePhaseGroupLabel?.(item.id, e.target.value, item.phases)}
+                      className="w-full border-b border-neutral-gray-300 bg-transparent text-[14px] font-bold capitalize text-brand-navy-1000 outline-none focus:border-brand-cyan-500"
+                      placeholder="Phase"
+                    />
+                  ) : (
+                    <span className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">
+                      {item.phases[0]?.groupLabel || "Phase"}
+                    </span>
+                  )}
+                </div>
 
-                return (
-                  <React.Fragment key={gid}>
-                    {/* PhaseRow — one cell per stage, aligned to grid columns */}
-                    <div style={{ display: "contents" }}>
-                      <div className="flex items-center pr-2 pt-3" style={{ gridColumn: 1 }}>
-                        <span className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">
-                          Phase
-                        </span>
-                      </div>
-                      {sectionStages.map((s) => {
-                        const stagePhases = groupPhases.filter((p) => p.stageId === s.id);
-                        return (
-                          <div key={s.id} className="flex items-stretch gap-1.5 pt-3">
-                            {stagePhases.map((phase) => (
-                              <div
-                                key={phase.id}
-                                className="group flex flex-1 items-center justify-center rounded-md bg-brand-navy-900 px-4 py-3"
-                                title={phase.description ?? undefined}
-                              >
-                                <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight text-white">
-                                  {phase.name}
-                                </span>
-                                {editMode && (
-                                  <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                                    <EditButton type="phase" id={phase.id} onClick={onEditEntity} />
-                                    <DeleteButton type="phase" id={phase.id} onConfirm={onDeleteEntity} />
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                            {stagePhases.length === 0 && !editMode && <div />}
-                            {editMode && (
-                              <AddButton type="phase" label="Phase" parentId={`${s.id}:${gid}`} onClick={onEditEntity} />
-                            )}
-                          </div>
-                        );
-                      })}
-                      {editMode && <div />}
+                {sectionStages.map((s) => {
+                  const stagePhases = item.phases.filter((p) => p.stageId === s.id);
+                  return (
+                    <div key={s.id} className="flex items-stretch gap-1.5 pt-3">
+                      {stagePhases.map((phase) => (
+                        <div
+                          key={phase.id}
+                          style={{ flex: "0 0 auto", minWidth: phaseMinWidths.get(phase.id) ?? CARD_W, backgroundColor: phase.bgColor || "#0F1724", color: phase.textColor || "#FFFFFF" }}
+                          className="group flex items-center justify-center rounded-md px-4 py-3"
+                          title={phase.description ?? undefined}
+                        >
+                          <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight">
+                            {phase.name}
+                          </span>
+                          {editMode && (
+                            <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                              <EditButton type="phase" id={phase.id} onClick={onEditEntity} />
+                              <DeleteButton type="phase" id={phase.id} onConfirm={onDeleteEntity} />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {stagePhases.length === 0 && !editMode && <div />}
+                      {editMode && (
+                        <AddButton type="phase" label="Phase" parentId={`${s.id}:${item.id}`} onClick={onEditEntity} />
+                      )}
                     </div>
+                  );
+                })}
+                {editMode && <div />}
+              </div>
 
-                    {/* Swimlanes for this phase group */}
-                    {groupSwimlanes.map((sl) => renderSwimlane(sl))}
-
-                    {/* + Swimlane */}
-                    {editMode && (
-                      <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="pt-1">
-                        <AddButton type="swimlane" label="Swimlane" parentId={`${section.id}:${gid}`} onClick={onEditEntity} />
-                      </div>
-                    )}
-                  </React.Fragment>
-                );
+              {/* Swimlanes within this group — reorderable among each other */}
+              {groupSwimlanes.map((sl) => {
+                const isJustMovedSl = justMovedId === sl.id;
+                const dragProps: DragRowProps | undefined = editMode && !sectionDragId
+                  ? {
+                      isDragTarget: groupDragOverSlId === sl.id,
+                      onDragStart: (e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", sl.id);
+                        setGroupDragSl({ gid: item.id, slId: sl.id });
+                      },
+                      onDragOver: (e) => {
+                        e.preventDefault();
+                        if (groupDragSl?.gid === item.id) setGroupDragOverSlId(sl.id);
+                      },
+                      onDrop: () => handleGroupSwimlaneDrop(item.id, sl.id),
+                      onDragLeave: () => setGroupDragOverSlId((prev) => prev === sl.id ? null : prev),
+                      onDragEnd: () => { setGroupDragSl(null); setGroupDragOverSlId(null); },
+                    }
+                  : undefined;
+                return renderSwimlane(sl, dragProps, isJustMovedSl);
               })}
 
-              {/* Orphan swimlanes (no phase group) */}
-              {orphanSwimlanes.map((sl) => renderSwimlane(sl))}
-
-              {/* + Add Phase Group */}
+              {/* + Swimlane */}
               {editMode && (
-                <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="flex gap-2 pt-3">
-                  <AddButton type="phase" label="Phase Group" parentId={section.id} onClick={onEditEntity} />
+                <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="pt-1">
+                  <AddButton type="swimlane" label="Swimlane" parentId={`${section.id}:${item.id}`} onClick={onEditEntity} />
                 </div>
               )}
-            </>
+            </React.Fragment>
           );
-        })()}
+        })}
+
+        {/* + Add Phase Group */}
+        {editMode && (
+          <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="flex gap-2 pt-3">
+            <AddButton type="phase" label="Phase Group" parentId={sectionStages[0]?.id ?? ""} onClick={onEditEntity} />
+          </div>
+        )}
       </div>
     </section>
   );
@@ -437,9 +866,13 @@ function MomentsGridRow({
   callouts,
   touchpointMedia,
   editMode,
+  isJustMoved,
   onEditEntity,
   onDeleteEntity,
   onToggleCollapse,
+  dragProps,
+  groupPhases,
+  phaseMinWidths,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
@@ -447,13 +880,33 @@ function MomentsGridRow({
   callouts: Callout[];
   touchpointMedia: Record<string, Media>;
   editMode: boolean;
+  isJustMoved?: boolean;
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
   onToggleCollapse: () => void;
+  dragProps?: DragRowProps;
+  /** Phases belonging to this swimlane's phase group, sorted by order. When provided,
+   *  each stage cell is subdivided into per-phase sub-cells. */
+  groupPhases?: Phase[];
+  /** Per-phase minimum pixel widths — must match the phase header row so pills and sub-cells align. */
+  phaseMinWidths?: Map<string, number>;
 }) {
   return (
     <div style={{ display: "contents" }}>
-      <div className="group flex items-start gap-1 pr-2 pt-3" style={{ gridColumn: 1 }}>
+      <div
+        className={[
+          "group flex items-start gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
+          dragProps?.isDragTarget ? "border-b-2 border-brand-cyan-500" : "",
+          isJustMoved ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
+        ].join(" ")}
+        style={{ gridColumn: 1 }}
+        onDragOver={dragProps?.onDragOver}
+        onDrop={dragProps ? () => dragProps.onDrop() : undefined}
+        onDragLeave={dragProps?.onDragLeave}
+      >
+        {dragProps && (
+          <GripHandle onDragStart={dragProps.onDragStart} onDragEnd={dragProps.onDragEnd} />
+        )}
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -461,7 +914,7 @@ function MomentsGridRow({
           className="flex flex-1 items-start gap-1 rounded text-left transition-opacity hover:opacity-70"
         >
           <span className="mt-0.5 text-neutral-gray-500"><Chevron open size={10} /></span>
-          <span className="whitespace-nowrap text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">
+          <span className="text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">
             {swimlane.name}
           </span>
         </button>
@@ -472,34 +925,141 @@ function MomentsGridRow({
           </div>
         )}
       </div>
-      {gridColumns.map((col, i) => (
-        <div key={i} className="flex flex-col gap-1 overflow-visible pt-2">
-          <SwimlaneCell
-            touchpoints={touchpointsForColumn(touchpoints, swimlane.id, col, swimlane.phaseId)}
-            callouts={calloutsForColumn(callouts, swimlane.id, col, swimlane.phaseId)}
-            touchpointMedia={touchpointMedia}
-            editMode={editMode}
-            onEditEntity={onEditEntity}
-            onDeleteEntity={onDeleteEntity}
-          />
-          {editMode && (
-            <div className="flex gap-1">
-              <AddButton
-                type="touchpoint"
-                label="Touchpoint"
-                parentId={`${col.stageId}:${swimlane.id}:${swimlane.phaseId ?? ""}`}
-                onClick={onEditEntity}
-              />
-              <AddButton
-                type="callout"
-                label="Callout"
-                parentId={col.stageId}
-                onClick={onEditEntity}
-              />
+      {gridColumns.map((col, i) => {
+        // Phase-group swimlane: subdivide this stage cell into per-phase sub-cells,
+        // matching the layout of the phase header row above.
+        const stagePhases = groupPhases?.filter((p) => p.stageId === col.stageId);
+
+        if (stagePhases && stagePhases.length > 0) {
+          const spanning = spanningCalloutsFor(callouts, swimlane.id, col.stageId);
+          const multiPhase = multiPhaseCalloutsFor(callouts, swimlane.id, col.stageId);
+          const PHASE_GAP = 6; // matches gap-1.5
+          return (
+            <div key={i} className="flex min-w-0 flex-col gap-1 pt-2">
+              {/* Per-phase sub-cells — touchpoints + single-phase callouts */}
+              <div className="flex gap-1.5">
+                {stagePhases.map((phase) => (
+                  <div
+                    key={phase.id}
+                    style={{ flex: "0 0 auto", minWidth: phaseMinWidths?.get(phase.id) ?? 176 }}
+                    className="flex flex-col gap-1 overflow-visible"
+                  >
+                    <SwimlaneCell
+                      touchpoints={touchpointsForColumn(touchpoints, swimlane.id, col, phase.id)}
+                      callouts={calloutsForColumn(callouts, swimlane.id, col, phase.id)}
+                      touchpointMedia={touchpointMedia}
+                      editMode={editMode}
+                      onEditEntity={onEditEntity}
+                      onDeleteEntity={onDeleteEntity}
+                    />
+                    {editMode && (
+                      <div className="flex gap-1">
+                        <AddButton
+                          type="touchpoint"
+                          label="Touchpoint"
+                          parentId={`${col.stageId}:${swimlane.id}:${phase.id}`}
+                          onClick={onEditEntity}
+                        />
+                        <AddButton
+                          type="callout"
+                          label="Callout"
+                          parentId={`${col.stageId}:${swimlane.id}`}
+                          onClick={onEditEntity}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {editMode && (
+                  // Invisible spacer matching the "+ Phase" AddButton width in the header above.
+                  <div className="pointer-events-none shrink-0 opacity-0" aria-hidden="true">
+                    <AddButton type="phase" label="Phase" parentId="" onClick={() => {}} />
+                  </div>
+                )}
+              </div>
+              {/* Multi-phase callouts — each spans the columns of its matched phases */}
+              {multiPhase.length > 0 && (
+                <div className="relative flex flex-col gap-1">
+                  {multiPhase.map((c) => {
+                    const matched = new Set(c.phaseIds ?? []);
+                    const firstIdx = stagePhases.findIndex((p) => matched.has(p.id));
+                    const lastIdx  = stagePhases.reduce((last, p, idx) => (matched.has(p.id) ? idx : last), -1);
+                    if (firstIdx === -1 || lastIdx === -1) return null;
+                    let offsetLeft = 0;
+                    for (let k = 0; k < firstIdx; k++) {
+                      offsetLeft += (phaseMinWidths?.get(stagePhases[k].id) ?? 176) + PHASE_GAP;
+                    }
+                    let spanWidth = 0;
+                    for (let k = firstIdx; k <= lastIdx; k++) {
+                      spanWidth += phaseMinWidths?.get(stagePhases[k].id) ?? 176;
+                      if (k > firstIdx) spanWidth += PHASE_GAP;
+                    }
+                    return (
+                      <div key={c.id} style={{ marginLeft: offsetLeft, width: spanWidth }}>
+                        <CalloutBadge
+                          callout={c}
+                          editMode={editMode}
+                          onEditEntity={onEditEntity}
+                          onDeleteEntity={onDeleteEntity}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Spanning callouts — shown once below all sub-cells, stacked vertically */}
+              {spanning.length > 0 && (
+                <div className="flex w-full flex-col gap-1">
+                  {spanning.map((c) => (
+                    <CalloutBadge
+                      key={c.id}
+                      callout={c}
+                      editMode={editMode}
+                      onEditEntity={onEditEntity}
+                      onDeleteEntity={onDeleteEntity}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ))}
+          );
+        }
+
+        // Phase-group swimlane but no phases exist for this stage → empty cell
+        if (groupPhases) {
+          return <div key={i} className="pt-2" />;
+        }
+
+        // Orphan swimlane: single cell, no phase filter
+        return (
+          <div key={i} className="flex flex-col gap-1 overflow-visible pt-2">
+            <SwimlaneCell
+              touchpoints={touchpointsForColumn(touchpoints, swimlane.id, col, undefined)}
+              callouts={calloutsForColumn(callouts, swimlane.id, col, undefined)}
+              touchpointMedia={touchpointMedia}
+              editMode={editMode}
+              onEditEntity={onEditEntity}
+              onDeleteEntity={onDeleteEntity}
+            />
+            {editMode && (
+              <div className="flex gap-1">
+                <AddButton
+                  type="touchpoint"
+                  label="Touchpoint"
+                  parentId={`${col.stageId}:${swimlane.id}:`}
+                  onClick={onEditEntity}
+                />
+                <AddButton
+                  type="callout"
+                  label="Callout"
+                  parentId={`${col.stageId}:${swimlane.id}`}
+                  onClick={onEditEntity}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -512,19 +1072,23 @@ function MotivationMapGridRow({
   gridColumns,
   meta,
   editMode,
+  isJustMoved,
   onToggleCollapse,
   onUpdateMotivationScore,
   onEditMotivationPoint,
   onAddMotivationPoint,
+  dragProps,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
   meta: MotivationMapData | undefined;
   editMode?: boolean;
+  isJustMoved?: boolean;
   onToggleCollapse: () => void;
   onUpdateMotivationScore?: (colIndex: number, scoreIndex: number, newScore: number) => void;
   onEditMotivationPoint?: (colIndex: number, scoreIndex: number) => void;
   onAddMotivationPoint?: (colIndex: number, score: number) => void;
+  dragProps?: DragRowProps;
 }) {
   const title = meta?.title || swimlane.name;
 
@@ -533,24 +1097,39 @@ function MotivationMapGridRow({
       {/* Chart row */}
       <div style={{ display: "contents" }}>
         {/* Label + Y-axis labels */}
-        <div className="relative pr-2 pt-3" style={{ gridColumn: 1 }}>
-          {/* Title — aligned with other swimlane titles */}
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            title={`Collapse ${swimlane.name}`}
-            className="mb-6 flex items-start gap-1 rounded text-left transition-opacity hover:opacity-70"
-          >
-            <span className="mt-0.5 text-neutral-gray-500"><Chevron open size={10} /></span>
-            <span className="whitespace-nowrap text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">
-              {title}
-            </span>
-          </button>
-          {/* Y-axis labels — positioned relative to the chart */}
+        <div
+          className={[
+            "relative pr-2 pt-3 rounded-md transition-all duration-700",
+            dragProps?.isDragTarget ? "border-b-2 border-brand-cyan-500" : "",
+            isJustMoved ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
+          ].join(" ")}
+          style={{ gridColumn: 1 }}
+          onDragOver={dragProps?.onDragOver}
+          onDrop={dragProps ? () => dragProps.onDrop() : undefined}
+          onDragLeave={dragProps?.onDragLeave}
+        >
+          {/* Grip + collapse button */}
+          <div className="mb-6 flex items-start gap-1">
+            {dragProps && (
+              <GripHandle onDragStart={dragProps.onDragStart} onDragEnd={dragProps.onDragEnd} />
+            )}
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title={`Collapse ${swimlane.name}`}
+              className="flex items-start gap-1 rounded text-left transition-opacity hover:opacity-70"
+            >
+              <span className="mt-0.5 text-neutral-gray-500"><Chevron open size={10} /></span>
+              <span className="text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">
+                {title}
+              </span>
+            </button>
+          </div>
+          {/* Y-axis labels */}
           {MM_LEVELS.map((lvl) => (
             <div
               key={lvl.label}
-              className="pointer-events-none absolute right-2 -translate-y-1/2 text-right text-[9px] font-medium leading-tight text-neutral-gray-500"
+              className="pointer-events-none absolute right-2 -translate-y-1/2 text-right text-[10px] font-medium leading-tight text-neutral-gray-500"
               style={{
                 top: `calc(${gridlineTopPercent(lvl.value)}% + 2.5rem)`,
                 maxWidth: "calc(100% - 8px)",
@@ -585,9 +1164,9 @@ function MotivationMapGridRow({
             style={{ gridColumn: `span ${gridColumns.length}` }}
             className="grid min-w-0 grid-cols-1 gap-2 pb-2 sm:grid-cols-3"
           >
-            {meta?.drivers && <MetaTile label="Key drivers" value={meta.drivers} />}
+            {meta?.drivers  && <MetaTile label="Key drivers"        value={meta.drivers}  />}
             {meta?.triggers && <MetaTile label="Emotional triggers" value={meta.triggers} />}
-            {meta?.insights && <MetaTile label="Key insights" value={meta.insights} />}
+            {meta?.insights && <MetaTile label="Key insights"       value={meta.insights} />}
           </div>
         </div>
       )}
@@ -598,7 +1177,7 @@ function MotivationMapGridRow({
 function MetaTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-neutral-gray-200 bg-neutral-gray-50 p-2.5">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-brand-cyan-500">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-cyan-500">
         {label}
       </div>
       <p className="mt-0.5 text-[11px] leading-snug text-neutral-gray-700">{value}</p>
@@ -619,6 +1198,9 @@ export function BlueprintCanvas({
   onEditEntity,
   onDeleteEntity,
   onUpdateMotivationMap,
+  onUpdateSection,
+  onUpdatePhaseGroupLabel,
+  onReorderRows,
   onToggleCollapse,
   onToggleSectionCollapse,
 }: Props) {
@@ -630,7 +1212,7 @@ export function BlueprintCanvas({
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-max min-w-full flex-col gap-4">
       {/* Section cards */}
       {sortedSections.map((section) => {
         const sectionStages = stagesForSection(blueprint, section.id);
@@ -648,6 +1230,9 @@ export function BlueprintCanvas({
             onEditEntity={onEditEntity}
             onDeleteEntity={onDeleteEntity}
             onUpdateMotivationMap={onUpdateMotivationMap}
+            onUpdateSection={onUpdateSection}
+            onUpdatePhaseGroupLabel={onUpdatePhaseGroupLabel}
+            onReorderRows={onReorderRows}
             onToggleCollapse={onToggleCollapse}
             onToggleSectionCollapse={onToggleSectionCollapse}
           />

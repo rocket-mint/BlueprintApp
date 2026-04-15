@@ -24,12 +24,21 @@ export function SwimlaneCell({
   const isEmpty = touchpoints.length === 0 && callouts.length === 0;
 
   if (isEmpty) {
+    if (!editMode) return <div className="min-h-[60px]" />;
     return (
       <div className="flex h-full min-h-[60px] items-center justify-center rounded-xl border border-dashed border-neutral-gray-200 text-[10px] text-neutral-gray-300">
         —
       </div>
     );
   }
+
+  // Callouts are capped to the combined width of the touchpoints they sit beside.
+  const CARD_W = 176;
+  const CARD_GAP = 8;
+  const calloutWidth =
+    touchpoints.length > 0
+      ? touchpoints.length * CARD_W + (touchpoints.length - 1) * CARD_GAP
+      : undefined; // no touchpoints → callouts fill available width
 
   return (
     <div className="flex flex-col gap-2 overflow-visible">
@@ -48,7 +57,10 @@ export function SwimlaneCell({
       </div>
 
       {callouts.length > 0 && (
-        <div className="flex w-full flex-col gap-1">
+        <div
+          style={calloutWidth !== undefined ? { width: calloutWidth } : undefined}
+          className={`flex flex-col gap-1${calloutWidth === undefined ? " w-full" : ""}`}
+        >
           {callouts.map((c) => (
             <CalloutBadge key={c.id} callout={c} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
           ))}

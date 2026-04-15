@@ -9,6 +9,7 @@ import type {
   Callout,
   Insight,
   MotivationMap,
+  StageGroup,
 } from "../types/blueprint";
 import type { Media } from "../components/MediaModal";
 import { createEmptyBlueprint } from "../utils/dataUtils";
@@ -18,7 +19,7 @@ import { createEmptyBlueprint } from "../utils/dataUtils";
 // ---------------------------------------------------------------------------
 
 /** Entity types that can be edited in the drawer. */
-export type EditableEntityType = "section" | "stage" | "phase" | "swimlane" | "touchpoint" | "callout" | "insight" | "motivation_point";
+export type EditableEntityType = "section" | "stage" | "stage_group" | "phase" | "swimlane" | "touchpoint" | "callout" | "insight" | "motivation_point";
 
 /** Describes the entity currently open in the edit drawer. */
 export interface EditingEntity {
@@ -58,7 +59,7 @@ const initialState: BlueprintState = {
 // ---------------------------------------------------------------------------
 
 type Action =
-  | { type: "LOAD_BLUEPRINT"; blueprint: Blueprint; fileName: string }
+  | { type: "LOAD_BLUEPRINT"; blueprint: Blueprint; fileName: string; touchpointMedia?: Record<string, Media> }
   | { type: "RESET" }
   // CRUD — sections
   | { type: "ADD_SECTION"; section: Section }
@@ -68,6 +69,10 @@ type Action =
   | { type: "ADD_STAGE"; stage: JourneyStage }
   | { type: "UPDATE_STAGE"; id: string; changes: Partial<Omit<JourneyStage, "id">> }
   | { type: "DELETE_STAGE"; id: string }
+  // CRUD — stage groups
+  | { type: "ADD_STAGE_GROUP"; stageGroup: StageGroup }
+  | { type: "UPDATE_STAGE_GROUP"; id: string; changes: Partial<Omit<StageGroup, "id">> }
+  | { type: "DELETE_STAGE_GROUP"; id: string }
   // CRUD — phases
   | { type: "ADD_PHASE"; phase: Phase }
   | { type: "UPDATE_PHASE"; id: string; changes: Partial<Omit<Phase, "id">> }
@@ -92,6 +97,8 @@ type Action =
   | { type: "ADD_MOTIVATION_MAP"; motivationMap: MotivationMap }
   | { type: "UPDATE_MOTIVATION_MAP"; id: string; changes: Partial<Omit<MotivationMap, "id">> }
   | { type: "DELETE_MOTIVATION_MAP"; id: string }
+  // Batch reorder (used by drag-to-reorder)
+  | { type: "BATCH_REORDER"; swimlaneOrders?: Array<{ id: string; order: number }>; phaseOrders?: Array<{ id: string; order: number }> }
   // UI state
   | { type: "SET_TOUCHPOINT_MEDIA"; touchpointId: string; media: Media }
   | { type: "REMOVE_TOUCHPOINT_MEDIA"; touchpointId: string }
@@ -138,6 +145,7 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
         ...initialState,
         blueprint: action.blueprint,
         fileName: action.fileName,
+        touchpointMedia: action.touchpointMedia ?? {},
       };
 
     case "RESET":
@@ -169,6 +177,30 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
     case "DELETE_STAGE": {
       const bp = ensureBp(state.blueprint);
       return { ...state, blueprint: { ...bp, journeyStages: deleteFromList(bp.journeyStages, action.id) } };
+    }
+
+    // --- Stage Groups ---
+    case "ADD_STAGE_GROUP": {
+      const bp = ensureBp(state.blueprint);
+      return { ...state, blueprint: { ...bp, stageGroups: [...(bp.stageGroups ?? []), action.stageGroup] } };
+    }
+    case "UPDATE_STAGE_GROUP": {
+      const bp = ensureBp(state.blueprint);
+      return { ...state, blueprint: { ...bp, stageGroups: updateList(bp.stageGroups ?? [], action.id, action.changes) } };
+    }
+    case "DELETE_STAGE_GROUP": {
+      const bp = ensureBp(state.blueprint);
+      return {
+        ...state,
+        blueprint: {
+          ...bp,
+          stageGroups: deleteFromList(bp.stageGroups ?? [], action.id),
+          // Remove stageGroupId reference from stages belonging to this group
+          journeyStages: bp.journeyStages.map((s) =>
+            s.stageGroupId === action.id ? { ...s, stageGroupId: undefined } : s,
+          ),
+        },
+      };
     }
 
     // --- Phases ---
@@ -255,6 +287,21 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
       return { ...state, blueprint: { ...bp, motivationMaps: deleteFromList(bp.motivationMaps, action.id) } };
     }
 
+    // --- Batch reorder ---
+    case "BATCH_REORDER": {
+      const bp = ensureBp(state.blueprint);
+      let { swimlanes, phases } = bp;
+      if (action.swimlaneOrders?.length) {
+        const map = new Map(action.swimlaneOrders.map((u) => [u.id, u.order]));
+        swimlanes = swimlanes.map((sl) => map.has(sl.id) ? { ...sl, order: map.get(sl.id)! } : sl);
+      }
+      if (action.phaseOrders?.length) {
+        const map = new Map(action.phaseOrders.map((u) => [u.id, u.order]));
+        phases = phases.map((p) => map.has(p.id) ? { ...p, order: map.get(p.id)! } : p);
+      }
+      return { ...state, blueprint: { ...bp, swimlanes, phases } };
+    }
+
     // --- UI state ---
     case "SET_TOUCHPOINT_MEDIA":
       return {
@@ -324,7 +371,7 @@ export interface BlueprintContextValue {
   dispatch: React.Dispatch<Action>;
 
   // Convenience action creators
-  loadBlueprint: (blueprint: Blueprint, fileName: string) => void;
+  loadBlueprint: (blueprint: Blueprint, fileName: string, touchpointMedia?: Record<string, Media>) => void;
   reset: () => void;
 
   // Touchpoint media
@@ -361,8 +408,8 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const loadBlueprint = useCallback(
-    (blueprint: Blueprint, fileName: string) =>
-      dispatch({ type: "LOAD_BLUEPRINT", blueprint, fileName }),
+    (blueprint: Blueprint, fileName: string, touchpointMedia?: Record<string, Media>) =>
+      dispatch({ type: "LOAD_BLUEPRINT", blueprint, fileName, touchpointMedia }),
     [],
   );
 
