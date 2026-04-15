@@ -456,6 +456,7 @@ export async function parseExcel(file: File): Promise<Blueprint> {
 
   return {
     sections,
+    stageGroups: [],
     journeyStages,
     phases,
     swimlanes,

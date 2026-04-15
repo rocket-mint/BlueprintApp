@@ -290,19 +290,6 @@ export function EditDrawer() {
 
   const close = () => setEditingEntity(null);
 
-  const getOrder = (): number | undefined => {
-    const lists: Record<string, Array<{ id: string; order?: number }>> = {
-      section: blueprint.sections,
-      stage: blueprint.journeyStages,
-      stage_group: blueprint.stageGroups ?? [],
-      phase: blueprint.phases,
-      swimlane: blueprint.swimlanes,
-      touchpoint: blueprint.touchpoints,
-      callout: blueprint.callouts,
-      insight: blueprint.insights as Array<{ id: string }>,
-    };
-    return (lists[type]?.find((e) => e.id === id) as { order?: number } | undefined)?.order;
-  };
 
   const handleDelete = () => {
     if (!confirmDelete) {
@@ -539,7 +526,7 @@ function SwimlaneForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps)
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [type, setType] = useState<string>(existing?.type ?? "moments");
-  const [sectionId, setSectionId] = useState(existing?.sectionId ?? (parentSection || (bp.sections[0]?.id ?? "")));
+  const [sectionId] = useState(existing?.sectionId ?? (parentSection || (bp.sections[0]?.id ?? "")));
   const [phaseId, setPhaseId] = useState(existing?.phaseId ?? parentPhase ?? "");
 
   const save = () => {
@@ -613,7 +600,7 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
   // When editing in a phase-group context, stageId is derived from the phase — not user-selectable
   const phaseStageId = parentPhase ? (bp.phases.find((p) => p.id === parentPhase)?.stageId ?? parentStage) : "";
   const [stageId, setStageId] = useState(existing?.stageId ?? (phaseStageId || parentStage || (bp.journeyStages[0]?.id ?? "")));
-  const [swimlaneId, setSwimlaneId] = useState(existing?.swimlaneId ?? (parentSwimlane || (bp.swimlanes[0]?.id ?? "")));
+  const [swimlaneId] = useState(existing?.swimlaneId ?? (parentSwimlane || (bp.swimlanes[0]?.id ?? "")));
 
   const save = () => {
     if (!name.trim()) return;
@@ -643,8 +630,6 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
     }
     onClose();
   };
-
-  const momentsSwimlanes = bp.swimlanes.filter((s) => s.type === "moments");
 
   return (
     <div className="flex flex-col gap-4">

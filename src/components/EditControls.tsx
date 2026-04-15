@@ -33,6 +33,7 @@ export function EditButton({
 const TYPE_LABELS: Record<EditableEntityType, string> = {
   section: "Section",
   stage: "Stage",
+  stage_group: "Stage Group",
   phase: "Phase",
   swimlane: "Swimlane",
   touchpoint: "Touchpoint",

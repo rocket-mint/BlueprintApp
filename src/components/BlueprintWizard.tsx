@@ -366,6 +366,7 @@ export function BlueprintWizard({ onComplete, onCancel }: Props) {
 
     const blueprint: Blueprint = {
       sections: bpSections,
+      stageGroups: [],
       journeyStages: bpStages,
       phases: bpPhases,
       swimlanes: bpSwimlanes,
