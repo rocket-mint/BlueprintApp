@@ -3,12 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "homepage": "https://rocket-mint.github.io/BlueprintApp/",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "sample": "node scripts/generate-sample.mjs"
+    "sample": "node scripts/generate-sample.mjs",
+    "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
