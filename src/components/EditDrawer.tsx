@@ -253,24 +253,6 @@ export function EditDrawer() {
             <div className="truncate text-sm font-bold text-brand-navy-1000">{id}</div>
           )}
         </div>
-        {!isNew && type !== "motivation_point" && (
-          <div className="mx-2 flex flex-col gap-0.5">
-            <button
-              onClick={() => { dispatch({ type: `UPDATE_${type.toUpperCase()}`, id, changes: { order: Math.max(0, (getOrder() ?? 1) - 1) } } as any); }}
-              title="Move up"
-              className="grid h-6 w-6 place-items-center rounded text-neutral-gray-400 hover:bg-neutral-gray-100 hover:text-brand-navy-1000"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
-            </button>
-            <button
-              onClick={() => { dispatch({ type: `UPDATE_${type.toUpperCase()}`, id, changes: { order: (getOrder() ?? 1) + 1 } } as any); }}
-              title="Move down"
-              className="grid h-6 w-6 place-items-center rounded text-neutral-gray-400 hover:bg-neutral-gray-100 hover:text-brand-navy-1000"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-            </button>
-          </div>
-        )}
         <button
           onClick={close}
           className="grid h-8 w-8 place-items-center rounded-md text-neutral-gray-500 hover:bg-neutral-gray-100"
