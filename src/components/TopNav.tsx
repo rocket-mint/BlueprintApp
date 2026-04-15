@@ -3,11 +3,12 @@ interface TopNavProps {
   editMode: boolean;
   onToggleEditMode: () => void;
   onSave: () => void;
+  onCancel: () => void;
   onDownload: () => void;
   onHome: () => void;
 }
 
-export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onDownload, onHome }: TopNavProps) {
+export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel, onDownload, onHome }: TopNavProps) {
   return (
     <header
       className={`sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-5 transition-colors duration-200 ${
@@ -49,16 +50,25 @@ export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onDownloa
       {/* Right — actions */}
       <div className="flex shrink-0 items-center gap-2">
         {editMode ? (
-          <button
-            type="button"
-            onClick={onSave}
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand-purple-500 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-purple-600"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            Save & Exit
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex items-center gap-1.5 rounded-md border border-neutral-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-gray-600 transition hover:bg-neutral-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand-purple-500 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-purple-600"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Save & Exit
+            </button>
+          </>
         ) : (
           <button
             type="button"

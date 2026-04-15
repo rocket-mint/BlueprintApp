@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { LandingScreen } from "./components/LandingScreen";
 import { Blueprint } from "./components/Blueprint";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -17,6 +17,8 @@ function AppContent() {
   const { blueprint, fileName, touchpointMedia, editMode } = state;
   const dragRef = useDragScroll<HTMLElement>();
   const [route, setRoute] = useState<Route>("landing");
+  // Snapshot taken when entering edit mode — restored on cancel
+  const blueprintSnapshot = useRef<typeof blueprint>(null);
 
   // When a blueprint loads (from upload or wizard), switch to editor
   const handleBlueprintLoaded = useCallback(
@@ -57,8 +59,21 @@ function AppContent() {
       <TopNav
         fileName={fileName}
         editMode={editMode}
-        onToggleEditMode={() => setEditMode(!editMode)}
-        onSave={() => setEditMode(false)}
+        onToggleEditMode={() => {
+          if (!editMode) blueprintSnapshot.current = blueprint;
+          setEditMode(!editMode);
+        }}
+        onSave={() => {
+          blueprintSnapshot.current = null;
+          setEditMode(false);
+        }}
+        onCancel={() => {
+          if (blueprintSnapshot.current && fileName) {
+            loadBlueprint(blueprintSnapshot.current, fileName);
+          }
+          blueprintSnapshot.current = null;
+          setEditMode(false);
+        }}
         onDownload={handleDownload}
         onHome={handleReset}
       />
