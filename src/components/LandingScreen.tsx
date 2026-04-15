@@ -1,13 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import { parseExcel } from "../utils/parseExcel";
 import type { Blueprint } from "../types/blueprint";
+import { createSampleBlueprint } from "../utils/sampleBlueprint";
 
 interface Props {
   onLoaded: (data: Blueprint, fileName: string) => void;
-  onBuild: () => void;
 }
 
-export function LandingScreen({ onLoaded, onBuild }: Props) {
+export function LandingScreen({ onLoaded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,10 +99,10 @@ export function LandingScreen({ onLoaded, onBuild }: Props) {
             }}
           />
 
-          {/* Start Building */}
+          {/* Create New */}
           <button
             type="button"
-            onClick={onBuild}
+            onClick={() => onLoaded(createSampleBlueprint(), "New Blueprint")}
             className="group flex flex-col items-center gap-5 rounded-[20px] border-2 border-neutral-gray-200 bg-white px-8 py-10 text-center transition-all hover:border-brand-purple-500 hover:shadow-lg"
           >
             <div className="grid h-16 w-16 place-items-center rounded-full bg-brand-purple-500/10 text-brand-purple-500 transition-colors group-hover:bg-brand-purple-500 group-hover:text-white">
@@ -112,9 +112,9 @@ export function LandingScreen({ onLoaded, onBuild }: Props) {
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-brand-navy-1000">Start Building</h2>
+              <h2 className="text-lg font-bold text-brand-navy-1000">Create New</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-neutral-gray-600">
-                Create a new blueprint from scratch with the interactive wizard
+                Start from a sample blueprint with placeholder content to guide you
               </p>
             </div>
           </button>

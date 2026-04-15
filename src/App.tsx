@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
 import { LandingScreen } from "./components/LandingScreen";
-import { BlueprintWizard } from "./components/BlueprintWizard";
 import { Blueprint } from "./components/Blueprint";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TopNav } from "./components/TopNav";
@@ -11,7 +10,7 @@ import { useDragScroll } from "./lib/useDragScroll";
 import { downloadBlueprintHtml } from "./lib/exportHtml";
 import { allStagesOrdered, stagesWithMotivationScores, motivationMapForSwimlane } from "./utils/dataUtils";
 
-type Route = "landing" | "wizard" | "editor";
+type Route = "landing" | "editor";
 
 function AppContent() {
   const { state, loadBlueprint, reset, setEditMode } = useBlueprint();
@@ -49,22 +48,7 @@ function AppContent() {
 
   // ── Landing ──
   if (route === "landing") {
-    return (
-      <LandingScreen
-        onLoaded={handleBlueprintLoaded}
-        onBuild={() => setRoute("wizard")}
-      />
-    );
-  }
-
-  // ── Wizard ──
-  if (route === "wizard") {
-    return (
-      <BlueprintWizard
-        onComplete={handleBlueprintLoaded}
-        onCancel={() => setRoute("landing")}
-      />
-    );
+    return <LandingScreen onLoaded={handleBlueprintLoaded} />;
   }
 
   // ── Editor ──

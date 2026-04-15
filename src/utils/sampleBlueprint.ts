@@ -1,0 +1,251 @@
+import type { Blueprint } from "../types/blueprint";
+
+/**
+ * Returns a ready-to-edit sample blueprint with placeholder copy that
+ * guides the user on how to fill in each section.
+ */
+export function createSampleBlueprint(): Blueprint {
+  return {
+    sections: [
+      {
+        id: "section-pre",
+        name: "Pre-Purchase",
+        description: "Edit this section name and description — sections group related journey stages together.",
+        order: 1,
+      },
+      {
+        id: "section-purchase",
+        name: "Purchase & Onboarding",
+        description: "Add as many sections as you need to cover your full customer journey.",
+        order: 2,
+      },
+    ],
+
+    journeyStages: [
+      { id: "stage-aware",    name: "Awareness",     sectionId: "section-pre",      description: "How the customer first hears about you.", order: 1 },
+      { id: "stage-consider", name: "Consideration",  sectionId: "section-pre",      description: "The customer evaluates options.", order: 2 },
+      { id: "stage-decide",   name: "Decision",       sectionId: "section-pre",      description: "The customer chooses your product or service.", order: 3 },
+      { id: "stage-purchase", name: "Purchase",       sectionId: "section-purchase", description: "The transaction takes place.", order: 4 },
+      { id: "stage-onboard",  name: "Onboarding",     sectionId: "section-purchase", description: "Getting the customer set up and successful.", order: 5 },
+    ],
+
+    phases: [],
+
+    swimlanes: [
+      {
+        id: "lane-actions",
+        name: "Customer Actions",
+        type: "moments",
+        sectionId: "section-pre",
+        description: "What the customer does at each stage — searches, clicks, calls, etc.",
+        order: 1,
+      },
+      {
+        id: "lane-touchpoints",
+        name: "Touchpoints",
+        type: "moments",
+        sectionId: "section-pre",
+        description: "The channels and surfaces the customer interacts with.",
+        order: 2,
+      },
+      {
+        id: "lane-backstage",
+        name: "Backstage Processes",
+        type: "moments",
+        sectionId: "section-pre",
+        description: "Internal processes the customer doesn't see but that enable the experience.",
+        order: 3,
+      },
+      {
+        id: "lane-motivation",
+        name: "Motivation",
+        type: "motivation_map",
+        sectionId: "section-pre",
+        description: "How motivated or pressured the customer feels at each stage.",
+        order: 4,
+      },
+      {
+        id: "lane-actions-2",
+        name: "Customer Actions",
+        type: "moments",
+        sectionId: "section-purchase",
+        description: "What the customer does at each stage — searches, clicks, calls, etc.",
+        order: 5,
+      },
+      {
+        id: "lane-touchpoints-2",
+        name: "Touchpoints",
+        type: "moments",
+        sectionId: "section-purchase",
+        description: "The channels and surfaces the customer interacts with.",
+        order: 6,
+      },
+      {
+        id: "lane-backstage-2",
+        name: "Backstage Processes",
+        type: "moments",
+        sectionId: "section-purchase",
+        description: "Internal processes the customer doesn't see but that enable the experience.",
+        order: 7,
+      },
+      {
+        id: "lane-motivation-2",
+        name: "Motivation",
+        type: "motivation_map",
+        sectionId: "section-purchase",
+        description: "How motivated or pressured the customer feels at each stage.",
+        order: 8,
+      },
+    ],
+
+    touchpoints: [
+      {
+        id: "tp-aware-search",
+        name: "Sees an ad or searches online",
+        stageId: "stage-aware",
+        swimlaneId: "lane-actions",
+        phaseIds: [],
+        description: "Click the pencil icon to edit this touchpoint — add a description, image, or link.",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+      {
+        id: "tp-aware-social",
+        name: "Social media / word of mouth",
+        stageId: "stage-aware",
+        swimlaneId: "lane-touchpoints",
+        phaseIds: [],
+        description: "What channel does first contact happen on? Replace this with your real touchpoint.",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+      {
+        id: "tp-consider-review",
+        name: "Reads reviews and compares",
+        stageId: "stage-consider",
+        swimlaneId: "lane-actions",
+        phaseIds: [],
+        description: "Describe what the customer does while evaluating options.",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+      {
+        id: "tp-consider-site",
+        name: "Website / landing page",
+        stageId: "stage-consider",
+        swimlaneId: "lane-touchpoints",
+        phaseIds: [],
+        description: "Which surface does this evaluation happen on?",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+      {
+        id: "tp-decide-action",
+        name: "Reaches out or signs up",
+        stageId: "stage-decide",
+        swimlaneId: "lane-actions",
+        phaseIds: [],
+        description: "What does the customer do to commit? Replace with your specific action.",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+      {
+        id: "tp-purchase-action",
+        name: "Completes checkout",
+        stageId: "stage-purchase",
+        swimlaneId: "lane-actions-2",
+        phaseIds: [],
+        description: "Describe the purchase action in detail.",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+      {
+        id: "tp-onboard-action",
+        name: "Receives welcome email + setup guide",
+        stageId: "stage-onboard",
+        swimlaneId: "lane-actions-2",
+        phaseIds: [],
+        description: "What's the first thing the customer experiences after purchase?",
+        order: 1,
+        photos: [],
+        links: [],
+      },
+    ],
+
+    callouts: [
+      {
+        id: "callout-pain-consider",
+        stageId: "stage-consider",
+        swimlaneId: "lane-actions",
+        phaseIds: [],
+        type: "pain_point",
+        title: "Example pain point — replace me",
+        description: "Callouts mark key moments: pain points, opportunities, highlights, or questions. Add yours via the + Callout button.",
+        order: 1,
+      },
+      {
+        id: "callout-opp-onboard",
+        stageId: "stage-onboard",
+        swimlaneId: "lane-actions-2",
+        phaseIds: [],
+        type: "opportunity",
+        title: "Example opportunity — replace me",
+        description: "Opportunities are areas where you could improve the experience. Click the pencil to edit.",
+        order: 1,
+      },
+    ],
+
+    insights: [
+      {
+        id: "insight-aware",
+        stageId: "stage-aware",
+        title: "Placeholder insight — add your research here",
+        text: "Insights capture data points and research findings per stage. Click the pencil to edit, or add more via Edit Mode.",
+        dataPoint: "XX%",
+        dataSource: "Your data source",
+      },
+      {
+        id: "insight-consider",
+        stageId: "stage-consider",
+        title: "Another example insight",
+        text: "Replace this with a real finding from user research, analytics, or surveys.",
+        dataPoint: "XX pts",
+        dataSource: "Your data source",
+      },
+    ],
+
+    motivationMaps: [
+      {
+        id: "mm-pre",
+        swimlaneId: "lane-motivation",
+        title: "Customer Motivation",
+        stageScores: {
+          "stage-aware":    [{ score: 0.5,  title: "Neutral awareness", description: "Customer becomes aware but hasn't formed a strong opinion yet." }],
+          "stage-consider": [{ score: 0.65, title: "Growing interest",   description: "Customer actively researches — motivation rises." }],
+          "stage-decide":   [{ score: 0.8,  title: "High intent",        description: "Customer is close to committing. Drag this point up or down to adjust." }],
+        },
+        drivers: "Drag data points to adjust motivation levels. Click a point to add a title and description.",
+        triggers: "Add emotional triggers that influence the customer at each stage.",
+        insights: "Add key insights about what drives motivation across this part of the journey.",
+      },
+      {
+        id: "mm-purchase",
+        swimlaneId: "lane-motivation-2",
+        title: "Customer Motivation",
+        stageScores: {
+          "stage-purchase": [{ score: 0.75, title: "Committed",    description: "Customer has decided — motivation is high but can dip if friction appears." }],
+          "stage-onboard":  [{ score: 0.6,  title: "Settling in",  description: "Post-purchase can feel uncertain. A smooth onboarding keeps motivation high." }],
+        },
+        drivers: "What drives the customer to complete the purchase?",
+        triggers: "What could cause drop-off or delight at this stage?",
+        insights: "Capture key onboarding insights here.",
+      },
+    ],
+  };
+}
