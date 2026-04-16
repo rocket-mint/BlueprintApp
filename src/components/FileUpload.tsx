@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { parseExcel } from "../utils/parseExcel";
+import { migrateBlueprint } from "../utils/blueprintMigration";
 import type { Blueprint } from "../types/blueprint";
 
 interface Props {
@@ -20,7 +21,8 @@ export function FileUpload({ onLoaded, onError }: Props) {
       }
       setLoading(true);
       try {
-        const data = await parseExcel(file);
+        const raw = await parseExcel(file);
+        const data = migrateBlueprint(raw);
         onLoaded(data, file.name);
       } catch (err) {
         onError(err instanceof Error ? err.message : "Failed to parse file");

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { parseExcel } from "../utils/parseExcel";
+import { migrateBlueprint } from "../utils/blueprintMigration";
 import { loadBlueprintFile } from "../utils/blueprintFile";
 import type { Blueprint } from "../types/blueprint";
 import type { Media } from "./MediaModal";
@@ -25,7 +26,8 @@ export function LandingScreen({ onLoaded }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const data = await parseExcel(file);
+      const raw = await parseExcel(file);
+      const data = migrateBlueprint(raw);
       onLoaded(data, file.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to parse file.");

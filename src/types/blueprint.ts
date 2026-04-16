@@ -34,6 +34,10 @@ export interface StageGroup {
   id: string;
   name: string;
   sectionId: string;
+  /** Custom background color for the stage group pill (CSS color string). */
+  bgColor?: string;
+  /** Custom text color for the stage group pill (CSS color string). */
+  textColor?: string;
   order: number;
 }
 
@@ -157,7 +161,10 @@ export interface Insight {
 // MotivationDataPoint — a single inflection point on the motivation curve
 // ---------------------------------------------------------------------------
 export interface MotivationDataPoint {
+  /** Vertical position: 0 = Low, 1 = High. */
   score: number;
+  /** Horizontal position: 0–1 fraction of chart width (left to right). */
+  x: number;
   title?: string;
   description?: string;
 }
@@ -169,11 +176,8 @@ export interface MotivationMap {
   id: string;
   swimlaneId: string;
   title?: string;
-  /** Data points keyed by stageId or phaseId. Each value is an array of
-   *  inflection points (score 0..1, with optional title + description).
-   *  When a stage has phases, points should be keyed by phaseId; otherwise
-   *  by stageId. Both are checked at lookup time. */
-  stageScores: Record<string, MotivationDataPoint[]>;
+  /** Free-positioned inflection points. Rendered in x-sorted order. */
+  points: MotivationDataPoint[];
   drivers?: string;
   triggers?: string;
   insights?: string;

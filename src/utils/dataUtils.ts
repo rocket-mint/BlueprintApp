@@ -117,25 +117,6 @@ export function buildKeyLookup(items: Array<{ id: string; name: string }>): Map<
 }
 
 // ---------------------------------------------------------------------------
-// Motivation scores — compat bridge for MotivationMap component
-// ---------------------------------------------------------------------------
-
-/**
- * Convert the new MotivationMap.stageScores into the flat motivationScores
- * array that the existing MotivationMap SVG component expects on each stage.
- * Returns a new array of stages with motivationScores populated.
- */
-export function stagesWithMotivationScores(
-  stages: JourneyStage[],
-  mm: MotivationMap | undefined,
-): Array<JourneyStage & { motivationScores: number[] }> {
-  return stages.map((s) => ({
-    ...s,
-    motivationScores: (mm?.stageScores[s.id] ?? [{ score: 0.33 }]).map((p) => p.score),
-  }));
-}
-
-// ---------------------------------------------------------------------------
 // Empty blueprint factory
 // ---------------------------------------------------------------------------
 

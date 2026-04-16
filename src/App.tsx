@@ -10,7 +10,7 @@ import { useDragScroll } from "./lib/useDragScroll";
 import { downloadBlueprintHtml } from "./lib/exportHtml";
 import { saveBlueprintFile } from "./utils/blueprintFile";
 import type { Media } from "./components/MediaModal";
-import { allStagesOrdered, stagesWithMotivationScores, motivationMapForSwimlane } from "./utils/dataUtils";
+import { allStagesOrdered } from "./utils/dataUtils";
 
 type Route = "landing" | "editor";
 
@@ -40,9 +40,7 @@ function AppContent() {
   const exportData = useMemo(() => {
     if (!blueprint) return null;
     const orderedStages = allStagesOrdered(blueprint);
-    const mmSwimlane = blueprint.swimlanes.find((s) => s.type === "motivation_map");
-    const mm = mmSwimlane ? motivationMapForSwimlane(blueprint, mmSwimlane.id) : undefined;
-    return { ...blueprint, journeyStages: stagesWithMotivationScores(orderedStages, mm) };
+    return { ...blueprint, journeyStages: orderedStages };
   }, [blueprint]);
 
   const handleDownload = useCallback(() => {

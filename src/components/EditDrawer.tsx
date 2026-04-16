@@ -3,7 +3,7 @@
 // Opens from the right when editingEntity is set. Shows form fields
 // appropriate to the entity type, with Save/Cancel/Delete actions.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlueprint } from "../hooks/useBlueprint";
 import type { EditableEntityType } from "../context/BlueprintContext";
 import type {
@@ -16,6 +16,7 @@ import type {
   Insight,
   CalloutType,
   MotivationMap as MotivationMapData,
+  MotivationDataPoint,
   StageGroup,
 } from "../types/blueprint";
 import { slugify } from "../utils/idGenerator";
@@ -466,6 +467,7 @@ function PhaseForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
   const [stageId, setStageId] = useState(existing?.stageId ?? (parentStage || (bp.journeyStages[0]?.id ?? "")));
   const [bgColor, setBgColor] = useState(existing?.bgColor ?? PHASE_DEFAULT_BG);
   const [textColor, setTextColor] = useState(existing?.textColor ?? PHASE_DEFAULT_TEXT);
+  const [applyToAll, setApplyToAll] = useState(false);
 
   const save = () => {
     if (!name.trim()) return;
@@ -493,6 +495,17 @@ function PhaseForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
     } else {
       dispatch({ type: "UPDATE_PHASE", id, changes: { name: name.trim(), stageId, description: description.trim() || undefined, bgColor, textColor } });
     }
+    if (applyToAll) {
+      const gid = isNew ? (slugify(name) || id) : (existing?.groupId ?? (parentGroup || undefined));
+      const otherPhases = bp.phases.filter((p) => {
+        if (p.id === (isNew ? (slugify(name) || id) : id)) return false;
+        if (gid) return (p.groupId ?? p.id) === gid;
+        return true; // no group — apply to all phases
+      });
+      for (const p of otherPhases) {
+        dispatch({ type: "UPDATE_PHASE", id: p.id, changes: { bgColor, textColor } });
+      }
+    }
     onClose();
   };
 
@@ -508,6 +521,15 @@ function PhaseForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
       <ColorPicker label="Background colour" value={bgColor} onChange={setBgColor} presets={BG_PRESETS} />
       <ColorPicker label="Text colour" value={textColor} onChange={setTextColor} presets={TEXT_PRESETS} />
       <PillPreview name={name} bgColor={bgColor} textColor={textColor} defaultBg={PHASE_DEFAULT_BG} />
+      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-gray-50">
+        <input
+          type="checkbox"
+          className="accent-brand-cyan-500"
+          checked={applyToAll}
+          onChange={() => setApplyToAll(!applyToAll)}
+        />
+        <span className="text-brand-navy-1000">Apply colours to all phases</span>
+      </label>
       <SaveButton onSave={save} disabled={!name.trim()} />
     </div>
   );
@@ -824,107 +846,187 @@ function InsightForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
 }
 
 // ── Save button ──
-// ── Motivation Point (hover card for a single data point) ──
+// ── Motivation Point ──
+// parentId formats:
+//   Edit existing : "${index}"                          (index in mm.points)
+//   Add (mm exists): "new:${x}:${score}"
+//   Add (no mm yet): "new:${x}:${score}:${swimlaneId}"
 function MotivationPointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
-  // id = motivation map ID
-  // parentId = "stageKey:scoreIndex[:score[:swimlaneId]]"
-  //   score    — pre-filled from click position (new points)
-  //   swimlaneId — present only when the motivation map doesn't exist yet and must be created on save
-  const parentParts = (parentId ?? "").split(":");
-  const stageKey = parentParts[0] || "";
-  const scoreIndex = parseInt(parentParts[1] ?? "0", 10);
-  const initialScore = parentParts[2] ? parseFloat(parentParts[2]) : undefined;
-  const swimlaneId = parentParts[3] || "";  // non-empty means we must auto-create the map
+  const parts = (parentId ?? "").split(":");
+  const isAdd = parts[0] === "new";
+  const pointIndex = isAdd ? -1 : parseInt(parts[0] ?? "0", 10);
+  const initialX = isAdd ? parseFloat(parts[1] ?? "0.5") : undefined;
+  const initialScore = isAdd ? parseFloat(parts[2] ?? "0.5") : undefined;
+  const autoCreateSwimlaneId = isAdd ? (parts[3] ?? "") : "";
 
   const mm = bp.motivationMaps.find((m) => m.id === id);
-  const points = mm?.stageScores[stageKey] ?? [];
-  const existing = points[scoreIndex];
+  const existing = !isAdd && mm ? mm.points[pointIndex] : undefined;
 
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [score, setScore] = useState(String(Math.round((initialScore ?? existing?.score ?? 0.5) * 100)));
+  const [score, setScore] = useState(String(Math.round((existing?.score ?? initialScore ?? 0.5) * 100)));
+  const [xPos, setXPos] = useState(String(Math.round((existing?.x ?? initialX ?? 0.5) * 100)));
+
+  const liveUpdatePoint = (newScore: string, newX: string) => {
+    if (!mm || isAdd) return;
+    const s = Math.max(0, Math.min(100, parseInt(newScore, 10) || 50)) / 100;
+    const x = Math.max(0, Math.min(100, parseInt(newX, 10) || 50)) / 100;
+    const updatedPoints = mm.points.map((p, i) =>
+      i === pointIndex ? { ...p, score: s, x } : p,
+    );
+    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { points: updatedPoints } });
+  };
 
   const save = () => {
     const newScore = Math.max(0, Math.min(100, parseInt(score, 10) || 50)) / 100;
+    const newX = Math.max(0, Math.min(100, parseInt(xPos, 10) || 50)) / 100;
+    const point: MotivationDataPoint = {
+      score: newScore,
+      x: newX,
+      title: title.trim() || undefined,
+      description: description.trim() || undefined,
+    };
 
-    // If the motivation map doesn't exist yet (wizard-created blueprints), create it first.
-    let targetMm: MotivationMapData | undefined = mm;
-    if (!targetMm) {
-      if (!swimlaneId) return;
-      const newMm: MotivationMapData = { id, swimlaneId, stageScores: {} };
+    if (!mm) {
+      if (!autoCreateSwimlaneId) return;
+      const newMm: MotivationMapData = { id, swimlaneId: autoCreateSwimlaneId, points: [point] };
       dispatch({ type: "ADD_MOTIVATION_MAP", motivationMap: newMm });
-      targetMm = newMm;
+      onClose();
+      return;
     }
 
-    const updatedPoints = [...(targetMm.stageScores[stageKey] ?? [])];
-    if (isNew || scoreIndex >= updatedPoints.length) {
-      updatedPoints.push({ score: newScore, title: title.trim() || undefined, description: description.trim() || undefined });
+    const updatedPoints = [...mm.points];
+    if (isAdd) {
+      updatedPoints.push(point);
     } else {
-      updatedPoints[scoreIndex] = { ...updatedPoints[scoreIndex], score: newScore, title: title.trim() || undefined, description: description.trim() || undefined };
+      updatedPoints[pointIndex] = { ...updatedPoints[pointIndex], ...point };
     }
-
-    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: targetMm.id, changes: { stageScores: { ...targetMm.stageScores, [stageKey]: updatedPoints } } });
+    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { points: updatedPoints } });
     onClose();
   };
 
   const handleDelete = () => {
-    if (!mm) return;
-    const updatedPoints = [...(mm.stageScores[stageKey] ?? [])];
-    updatedPoints.splice(scoreIndex, 1);
-    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { stageScores: { ...mm.stageScores, [stageKey]: updatedPoints } } });
+    if (!mm || isAdd) return;
+    const updatedPoints = mm.points.filter((_, i) => i !== pointIndex);
+    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { points: updatedPoints } });
     onClose();
+  };
+
+  const handleDeletePoint = (idx: number) => {
+    if (!mm) return;
+    const updatedPoints = mm.points.filter((_, i) => i !== idx);
+    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { points: updatedPoints } });
+  };
+
+  const handleUpdatePoint = (idx: number, changes: Partial<MotivationDataPoint>) => {
+    if (!mm) return;
+    const updatedPoints = mm.points.map((p, i) => i === idx ? { ...p, ...changes } : p);
+    dispatch({ type: "UPDATE_MOTIVATION_MAP", id: mm.id, changes: { points: updatedPoints } });
   };
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Current point editor */}
       <div className="rounded-lg bg-brand-purple-500/10 p-3">
-        <div className="text-[11px] font-semibold text-brand-purple-500">
-          Score: {score}%
+        <div className="text-[11px] font-semibold text-brand-purple-500">Score: {score}%</div>
+        <input
+          type="range" min="0" max="100" value={score}
+          onChange={(e) => { setScore(e.target.value); liveUpdatePoint(e.target.value, xPos); }}
+          className="mt-1 w-full accent-brand-purple-500"
+        />
+        <div className="mt-2 text-[11px] font-semibold text-brand-purple-500">
+          Position: {xPos}%
         </div>
         <input
-          type="range"
-          min="0"
-          max="100"
-          value={score}
-          onChange={(e) => setScore(e.target.value)}
+          type="range" min="0" max="100" value={xPos}
+          onChange={(e) => { setXPos(e.target.value); liveUpdatePoint(score, e.target.value); }}
           className="mt-1 w-full accent-brand-purple-500"
         />
       </div>
-      <p className="text-xs text-neutral-gray-500">
-        The hover card appears when someone hovers over this data point.
-      </p>
       <Field label="Title"><TextInput value={title} onChange={setTitle} placeholder="Data point title" /></Field>
       <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="What happens at this point?" /></Field>
 
-      {(title || description) && (
-        <div className="rounded-lg border-2 border-brand-purple-500/30 bg-white p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-gray-400">Preview</div>
-          {title && <div className="mt-1 text-[12px] font-bold text-brand-navy-1000">{title}</div>}
-          {description && <p className="mt-0.5 text-[11px] text-neutral-gray-600">{description}</p>}
-          <div className="mt-1 text-[10px] font-semibold text-brand-purple-500">Score: {score}%</div>
-        </div>
-      )}
-
       <SaveButton onSave={save} disabled={false} />
 
-      {!isNew && existing && (
+      {!isAdd && existing && (
         <button
           type="button"
           onClick={handleDelete}
           className="w-full rounded-md px-3 py-2 text-xs font-semibold text-semantic-error transition hover:bg-semantic-error/5"
         >
-          Remove data point
+          Remove this point
         </button>
+      )}
+
+      {/* All data points list */}
+      {mm && mm.points.length > 0 && (
+        <div className="border-t border-neutral-gray-200 pt-4">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">
+            All Data Points
+          </div>
+          <div className="flex flex-col gap-2">
+            {mm.points.map((pt, idx) => {
+              const isActive = !isAdd && idx === pointIndex;
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-2 rounded-lg border p-2 ${isActive ? "border-brand-purple-500 bg-brand-purple-500/5" : "border-neutral-gray-200"}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-[12px] font-bold text-brand-navy-1000">
+                        {pt.title || "Untitled"}
+                      </span>
+                      <span className="shrink-0 text-[11px] font-semibold text-brand-purple-500">
+                        {Math.round(pt.score * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range" min="0" max="100"
+                      value={Math.round(pt.score * 100)}
+                      onChange={(e) => handleUpdatePoint(idx, { score: parseInt(e.target.value, 10) / 100 })}
+                      className="mt-1 w-full accent-brand-purple-500"
+                    />
+                    <div className="mt-1 text-[10px] text-neutral-gray-400">Position: {Math.round(pt.x * 100)}%</div>
+                    <input
+                      type="range" min="0" max="100"
+                      value={Math.round(pt.x * 100)}
+                      onChange={(e) => handleUpdatePoint(idx, { x: parseInt(e.target.value, 10) / 100 })}
+                      className="w-full accent-brand-purple-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePoint(idx)}
+                    className="shrink-0 text-neutral-gray-400 hover:text-semantic-error"
+                    title="Remove"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
 // ── Stage Group ──
+const STAGE_GROUP_DEFAULT_BG = "#E5E7EB";
+const STAGE_GROUP_DEFAULT_TEXT = "#0F1724";
+
 function StageGroupForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
   const existing = (bp.stageGroups ?? []).find((g) => g.id === id);
   const [name, setName] = useState(existing?.name ?? "");
   const [sectionId, setSectionId] = useState(existing?.sectionId ?? parentId ?? bp.sections[0]?.id ?? "");
+  const [bgColor, setBgColor] = useState(existing?.bgColor ?? STAGE_GROUP_DEFAULT_BG);
+  const [textColor, setTextColor] = useState(existing?.textColor ?? STAGE_GROUP_DEFAULT_TEXT);
+  const [applyToStages, setApplyToStages] = useState(false);
 
   const save = () => {
     if (!name.trim()) return;
@@ -936,11 +1038,20 @@ function StageGroupForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
           id: newId,
           name: name.trim(),
           sectionId,
+          bgColor,
+          textColor,
           order: (bp.stageGroups?.length ?? 0) + 1,
         } as StageGroup,
       });
     } else {
-      dispatch({ type: "UPDATE_STAGE_GROUP", id, changes: { name: name.trim(), sectionId } });
+      dispatch({ type: "UPDATE_STAGE_GROUP", id, changes: { name: name.trim(), sectionId, bgColor, textColor } });
+    }
+    // Apply colors to all stage groups in the same section
+    if (applyToStages) {
+      const otherGroups = (bp.stageGroups ?? []).filter((g) => g.sectionId === sectionId && g.id !== (isNew ? (slugify(name) || id) : id));
+      for (const g of otherGroups) {
+        dispatch({ type: "UPDATE_STAGE_GROUP", id: g.id, changes: { bgColor, textColor } });
+      }
     }
     onClose();
   };
@@ -957,6 +1068,20 @@ function StageGroupForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
           options={bp.sections.map((s) => ({ value: s.id, label: s.name }))}
         />
       </Field>
+      <ColorPicker label="Background colour" value={bgColor} onChange={setBgColor} presets={BG_PRESETS} />
+      <ColorPicker label="Text colour" value={textColor} onChange={setTextColor} presets={TEXT_PRESETS} />
+      <PillPreview name={name} bgColor={bgColor} textColor={textColor} defaultBg={STAGE_GROUP_DEFAULT_BG} />
+      {!isNew && (
+        <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-neutral-gray-50">
+          <input
+            type="checkbox"
+            className="accent-brand-cyan-500"
+            checked={applyToStages}
+            onChange={() => setApplyToStages(!applyToStages)}
+          />
+          <span className="text-brand-navy-1000">Apply colours to all stage groups</span>
+        </label>
+      )}
       <SaveButton onSave={save} disabled={!name.trim()} />
     </div>
   );

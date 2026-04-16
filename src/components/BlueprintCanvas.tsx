@@ -19,7 +19,7 @@ import type {
 import type { Media } from "./MediaModal";
 import { TouchpointCard } from "./TouchpointCard";
 import { CalloutBadge } from "./CalloutBadge";
-import { MotivationMap, MM_LEVELS, MM_VIEW_H, MM_M } from "./MotivationMap";
+import { MotivationMap } from "./MotivationMap";
 import { InsightsSection } from "./InsightsSection";
 import { EditButton, DeleteButton, AddButton } from "./EditControls";
 import type { EditingEntity, EditableEntityType } from "../context/BlueprintContext";
@@ -35,10 +35,6 @@ import { stagesForSection } from "../utils/dataUtils";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-const MM_INNER_H = MM_VIEW_H - MM_M.top - MM_M.bottom;
-function gridlineTopPercent(value: number): number {
-  return ((MM_M.top + (1 - value) * MM_INNER_H) / MM_VIEW_H) * 100;
-}
 
 function Chevron({ open, size = 14 }: { open: boolean; size?: number }) {
   return (
@@ -192,7 +188,8 @@ interface Props {
   editMode: boolean;
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
-  onUpdateMotivationMap?: (id: string, stageScores: MotivationMapData["stageScores"]) => void;
+  onUpdateMotivationMap?: (id: string, points: MotivationMapData["points"]) => void;
+  onAddMotivationMap?: (mm: MotivationMapData) => void;
   onUpdateSection?: (id: string, changes: { name?: string; description?: string; stageLabel?: string; stageGroupLabel?: string }) => void;
   onUpdatePhaseGroupLabel?: (groupId: string, label: string, phases: Phase[]) => void;
   onReorderRows?: (update: ReorderUpdate) => void;
@@ -216,6 +213,7 @@ function SectionCard({
   onEditEntity,
   onDeleteEntity,
   onUpdateMotivationMap,
+  onAddMotivationMap,
   onUpdateSection,
   onUpdatePhaseGroupLabel,
   onReorderRows,
@@ -235,7 +233,8 @@ function SectionCard({
   editMode: boolean;
   onEditEntity: (entity: EditingEntity) => void;
   onDeleteEntity: (type: EditableEntityType, id: string) => void;
-  onUpdateMotivationMap?: (id: string, stageScores: MotivationMapData["stageScores"]) => void;
+  onUpdateMotivationMap?: (id: string, points: MotivationMapData["points"]) => void;
+  onAddMotivationMap?: (mm: MotivationMapData) => void;
   onUpdateSection?: (id: string, changes: { name?: string; description?: string; stageLabel?: string; stageGroupLabel?: string }) => void;
   onUpdatePhaseGroupLabel?: (groupId: string, label: string, phases: Phase[]) => void;
   onReorderRows?: (update: ReorderUpdate) => void;
@@ -484,36 +483,31 @@ function SectionCard({
           editMode={editMode}
           isJustMoved={isJustMoved}
           onToggleCollapse={() => onToggleCollapse(sl.id)}
-          onUpdateMotivationScore={(colIndex, scoreIndex, newScore) => {
+          onDragMotivationPoint={(index, newX, newScore) => {
             const mm = motivationMapByLane.get(sl.id);
             if (!mm || !onUpdateMotivationMap) return;
-            const col = gridColumns[colIndex];
-            const key = col.phase?.id ?? col.stageId;
-            const scores = [...(mm.stageScores[key] ?? [{ score: 0.33 }])];
-            if (scoreIndex < scores.length) {
-              scores[scoreIndex] = { ...scores[scoreIndex], score: newScore };
-            }
-            onUpdateMotivationMap(mm.id, { ...mm.stageScores, [key]: scores });
+            const newPoints = mm.points.map((p, i) =>
+              i === index ? { ...p, x: newX, score: newScore } : p,
+            );
+            onUpdateMotivationMap(mm.id, newPoints);
           }}
-          onEditMotivationPoint={(colIndex, scoreIndex) => {
+          onEditMotivationPoint={(index) => {
             const mm = motivationMapByLane.get(sl.id);
             if (!mm) return;
-            const col = gridColumns[colIndex];
-            const key = col.phase?.id ?? col.stageId;
-            onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${scoreIndex}` });
+            onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${index}` });
           }}
-          onAddMotivationPoint={(colIndex, score) => {
+          onAddMotivationPoint={(x, score) => {
             const mm = motivationMapByLane.get(sl.id);
-            const col = gridColumns[colIndex];
-            const key = col.phase?.id ?? col.stageId;
+            const newPoint = { x, score };
             if (!mm) {
               const newId = `mm-${sl.id}`;
-              onEditEntity({ type: "motivation_point", id: newId, parentId: `${key}:0:${score}:${sl.id}`, isNew: true });
-              return;
+              onAddMotivationMap?.({ id: newId, swimlaneId: sl.id, points: [newPoint] });
+            } else {
+              onUpdateMotivationMap?.(mm.id, [...mm.points, newPoint]);
             }
-            const existingCount = (mm.stageScores[key] ?? []).length;
-            onEditEntity({ type: "motivation_point", id: mm.id, parentId: `${key}:${existingCount}:${score}`, isNew: true });
           }}
+          onEditEntity={onEditEntity}
+          onDeleteEntity={onDeleteEntity}
           dragProps={dragProps}
           editingEntityId={editingEntityId}
         />
@@ -647,15 +641,15 @@ function SectionCard({
               const endCol = startCol + span.count;
               return (
                 <div
-                  key={i}
-                  style={{ gridColumn: `${startCol} / ${endCol}` }}
+                  key={`span-${i}`}
+                  style={{ gridColumn: `${startCol} / ${endCol}`, ...(span.group ? { backgroundColor: span.group.bgColor || "#E5E7EB", color: span.group.textColor || "#0F1724" } : {}) }}
                   className={span.group
-                    ? "group/sg flex items-center justify-center rounded-md bg-neutral-gray-200 px-4 py-3"
+                    ? "group/sg flex items-center justify-center rounded-md px-4 py-3"
                     : ""}
                 >
                   {span.group && (
                     <>
-                      <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight text-brand-navy-1000">
+                      <span className="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight">
                         {span.group.name}
                       </span>
                       {editMode && (
@@ -669,12 +663,31 @@ function SectionCard({
                 </div>
               );
             })}
-            {/* Edit column */}
-            {editMode && (
-              <div className="flex items-center">
-                <AddButton type="stage_group" label="Group" parentId={section.id} onClick={onEditEntity} />
-              </div>
-            )}
+            {/* Edit column — unassigned groups + add button in the last column */}
+            {editMode && (() => {
+              const assignedGroupIds = new Set(groupSpans.filter((s) => s.group).map((s) => s.group!.id));
+              const unassigned = sectionStageGroups.filter((g) => !assignedGroupIds.has(g.id));
+              return (
+                <div style={{ gridColumn: sectionStages.length + 2 }} className="flex items-center gap-1.5">
+                  {unassigned.map((g) => (
+                    <div
+                      key={g.id}
+                      className="group/sg flex items-center gap-2 rounded-md border border-dashed px-4 py-3"
+                      style={{ backgroundColor: g.bgColor || "#E5E7EB", color: g.textColor || "#0F1724", borderColor: g.textColor || "#0F1724" }}
+                    >
+                      <span className="whitespace-nowrap text-[14px] font-bold leading-tight">
+                        {g.name}
+                      </span>
+                      <div className="flex shrink-0 gap-0.5">
+                        <EditButton type="stage_group" id={g.id} onClick={onEditEntity} />
+                        <DeleteButton type="stage_group" id={g.id} onConfirm={onDeleteEntity} />
+                      </div>
+                    </div>
+                  ))}
+                  <AddButton type="stage_group" label="Stage" parentId={section.id} onClick={onEditEntity} />
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -786,13 +799,24 @@ function SectionCard({
                     <Chevron open={!collapsedPhaseGroups.has(item.id)} size={14} />
                   </button>
                   {editMode ? (
-                    <input
-                      type="text"
-                      value={item.phases[0]?.groupLabel ?? "Phase"}
-                      onChange={(e) => onUpdatePhaseGroupLabel?.(item.id, e.target.value, item.phases)}
-                      className="w-full rounded-md border border-neutral-gray-200 bg-white px-2 py-1 text-[14px] font-bold capitalize text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
-                      placeholder="Phase"
-                    />
+                    <>
+                      <input
+                        type="text"
+                        value={item.phases[0]?.groupLabel ?? "Phase"}
+                        onChange={(e) => onUpdatePhaseGroupLabel?.(item.id, e.target.value, item.phases)}
+                        className="w-full rounded-md border border-neutral-gray-200 bg-white px-2 py-1 text-[14px] font-bold capitalize text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
+                        placeholder="Phase"
+                      />
+                      <div className="flex shrink-0 gap-0.5">
+                        <EditButton type="phase" id={item.phases[0]?.id ?? item.id} onClick={onEditEntity} />
+                        <DeleteButton type="phase" id={item.phases[0]?.id ?? item.id} onConfirm={(type, _id) => {
+                          // Delete all phases in the group
+                          for (const p of item.phases) {
+                            onDeleteEntity(type, p.id);
+                          }
+                        }} />
+                      </div>
+                    </>
                   ) : (
                     <button
                       type="button"
@@ -877,10 +901,11 @@ function SectionCard({
           );
         })}
 
-        {/* + Add Phase Group */}
+        {/* + Add Phase Group / Swimlane */}
         {editMode && (
           <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="flex gap-2 pt-3">
             <AddButton type="phase" label="Phase Group" parentId={sectionStages[0]?.id ?? ""} onClick={onEditEntity} />
+            <AddButton type="swimlane" label="Swimlane" parentId={section.id} onClick={onEditEntity} />
           </div>
         )}
       </div>
@@ -1145,9 +1170,11 @@ function MotivationMapGridRow({
   editMode,
   isJustMoved,
   onToggleCollapse,
-  onUpdateMotivationScore,
+  onDragMotivationPoint,
   onEditMotivationPoint,
   onAddMotivationPoint,
+  onEditEntity,
+  onDeleteEntity,
   dragProps,
   editingEntityId,
 }: {
@@ -1157,9 +1184,11 @@ function MotivationMapGridRow({
   editMode?: boolean;
   isJustMoved?: boolean;
   onToggleCollapse: () => void;
-  onUpdateMotivationScore?: (colIndex: number, scoreIndex: number, newScore: number) => void;
-  onEditMotivationPoint?: (colIndex: number, scoreIndex: number) => void;
-  onAddMotivationPoint?: (colIndex: number, score: number) => void;
+  onDragMotivationPoint?: (index: number, x: number, score: number) => void;
+  onEditMotivationPoint?: (index: number) => void;
+  onAddMotivationPoint?: (x: number, score: number) => void;
+  onEditEntity: (entity: EditingEntity) => void;
+  onDeleteEntity: (type: EditableEntityType, id: string) => void;
   dragProps?: DragRowProps;
   editingEntityId?: string | null;
 }) {
@@ -1169,10 +1198,10 @@ function MotivationMapGridRow({
     <>
       {/* Chart row */}
       <div style={{ display: "contents" }}>
-        {/* Label + Y-axis labels */}
+        {/* Label */}
         <div
           className={[
-            "relative pr-2 pt-3 rounded-md transition-all duration-700",
+            "group relative pr-2 pt-3 rounded-md transition-all duration-700",
             dragProps?.isDragTarget ? "border-b-2 border-brand-cyan-500" : "",
             isJustMoved ? "ring-2 ring-brand-cyan-400 bg-brand-cyan-50/60" : "",
             editingEntityId === swimlane.id ? "ring-2 ring-brand-cyan-500" : "",
@@ -1183,7 +1212,7 @@ function MotivationMapGridRow({
           onDragLeave={dragProps?.onDragLeave}
         >
           {/* Grip + collapse button */}
-          <div className="mb-6 flex items-start justify-end gap-1">
+          <div className="flex items-start justify-end gap-1">
             {dragProps && (
               <GripHandle onDragStart={dragProps.onDragStart} onDragEnd={dragProps.onDragEnd} />
             )}
@@ -1198,20 +1227,13 @@ function MotivationMapGridRow({
                 {title}
               </span>
             </button>
+            {editMode && (
+              <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                <EditButton type="swimlane" id={swimlane.id} onClick={onEditEntity} />
+                <DeleteButton type="swimlane" id={swimlane.id} onConfirm={onDeleteEntity} />
+              </div>
+            )}
           </div>
-          {/* Y-axis labels */}
-          {MM_LEVELS.map((lvl) => (
-            <div
-              key={lvl.label}
-              className="pointer-events-none absolute right-2 -translate-y-1/2 text-right text-[10px] font-medium leading-tight text-neutral-gray-500"
-              style={{
-                top: `calc(${gridlineTopPercent(lvl.value)}% + 2.5rem)`,
-                maxWidth: "calc(100% - 8px)",
-              }}
-            >
-              {lvl.label}
-            </div>
-          ))}
         </div>
 
         {/* SVG spanning all columns */}
@@ -1220,10 +1242,9 @@ function MotivationMapGridRow({
           className="min-w-0 pt-2"
         >
           <MotivationMap
-            columns={gridColumns}
-            meta={meta}
+            points={meta?.points ?? []}
             editMode={editMode}
-            onUpdateScore={onUpdateMotivationScore}
+            onDragPoint={onDragMotivationPoint}
             onEditPoint={onEditMotivationPoint}
             onAddPoint={onAddMotivationPoint}
           />
@@ -1273,6 +1294,7 @@ export function BlueprintCanvas({
   onEditEntity,
   onDeleteEntity,
   onUpdateMotivationMap,
+  onAddMotivationMap,
   onUpdateSection,
   onUpdatePhaseGroupLabel,
   onReorderRows,
@@ -1339,6 +1361,7 @@ export function BlueprintCanvas({
             onEditEntity={onEditEntity}
             onDeleteEntity={onDeleteEntity}
             onUpdateMotivationMap={onUpdateMotivationMap}
+            onAddMotivationMap={onAddMotivationMap}
             onUpdateSection={onUpdateSection}
             onUpdatePhaseGroupLabel={onUpdatePhaseGroupLabel}
             onReorderRows={onReorderRows}

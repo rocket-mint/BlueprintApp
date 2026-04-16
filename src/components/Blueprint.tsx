@@ -52,7 +52,8 @@ export function Blueprint() {
           editMode={editMode}
           onEditEntity={(entity) => setEditingEntity(entity)}
           onDeleteEntity={(type, id) => dispatch({ type: `DELETE_${type.toUpperCase()}`, id } as any)}
-          onUpdateMotivationMap={(id, stageScores) => dispatch({ type: "UPDATE_MOTIVATION_MAP", id, changes: { stageScores } })}
+          onUpdateMotivationMap={(id, points) => dispatch({ type: "UPDATE_MOTIVATION_MAP", id, changes: { points } })}
+          onAddMotivationMap={(mm) => dispatch({ type: "ADD_MOTIVATION_MAP", motivationMap: mm })}
           onUpdateSection={(id, changes) => dispatch({ type: "UPDATE_SECTION", id, changes })}
           onUpdatePhaseGroupLabel={(_groupId, label, phases) =>
             phases.forEach((p) => dispatch({ type: "UPDATE_PHASE", id: p.id, changes: { groupLabel: label } }))
