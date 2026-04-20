@@ -1,17 +1,29 @@
 // Always-visible left sidebar. Sticky 250px column inside the top-level flex
 // row in App.tsx, scrolls with the page until pinned to top:0 of the viewport.
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface SidebarProps {
   editMode?: boolean;
+}
+
+interface KeyItem {
+  label: string;
+  bg: string;    // hex
+  border: string; // hex or ""
 }
 
 const DEFAULTS = {
   title: "Future Journey Map",
   intro: "The modern customer journey is composed of multiple, overlapping touchpoints and interactions that are not as clearly defined as traditional marketing funnels.",
   howToUse: "Drag horizontally anywhere on the blueprint to pan across the journey. Click a swimlane title to collapse or expand it. Click any touchpoint card's pencil icon to attach an image or link reference.",
-  subjectToChange: "This map is a living artifact. As research and design iterate, the stages, swimlanes, and touchpoints will evolve.",
 };
+
+const DEFAULT_KEY_ITEMS: KeyItem[] = [
+  { label: "Journey stage",    bg: "#0f1724", border: "" },
+  { label: "Touchpoint card",  bg: "#ffffff", border: "#d1d5db" },
+  { label: "Motivation curve", bg: "#8073ff", border: "" },
+  { label: "Callout",          bg: "#f59e0b", border: "" },
+];
 
 function EditableText({
   value,
@@ -49,24 +61,67 @@ function EditableText({
   );
 }
 
-export function Sidebar({ editMode }: SidebarProps) {
-  const [title, setTitle] = useState(DEFAULTS.title);
-  const [intro, setIntro] = useState(DEFAULTS.intro);
-  const [howToUse, setHowToUse] = useState(DEFAULTS.howToUse);
-  const [subjectToChange, setSubjectToChange] = useState(DEFAULTS.subjectToChange);
-  const [keyLabels, setKeyLabels] = useState([
-    "Journey stage",
-    "Touchpoint card",
-    "Motivation curve",
-    "Callout",
-  ]);
+/** Color swatch that doubles as a color-picker trigger in edit mode */
+function KeySwatch({
+  bg,
+  border,
+  editMode,
+  onChange,
+}: {
+  bg: string;
+  border: string;
+  editMode?: boolean;
+  onChange?: (color: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const keyColors = [
-    "bg-brand-navy-1000",
-    "border border-neutral-gray-300 bg-white",
-    "bg-brand-purple-500",
-    "bg-semantic-warning",
-  ];
+  const swatch = (
+    <span
+      className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+      style={{
+        background: bg,
+        border: border ? `1px solid ${border}` : undefined,
+      }}
+    />
+  );
+
+  if (!editMode) return swatch;
+
+  return (
+    <label
+      className="relative shrink-0 cursor-pointer"
+      title="Click to change color"
+    >
+      {swatch}
+      <input
+        ref={inputRef}
+        type="color"
+        value={bg}
+        onChange={(e) => onChange?.(e.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        style={{ padding: 0, border: 0 }}
+      />
+    </label>
+  );
+}
+
+export function Sidebar({ editMode }: SidebarProps) {
+  const [title, setTitle]     = useState(DEFAULTS.title);
+  const [intro, setIntro]     = useState(DEFAULTS.intro);
+  const [howToUse, setHowToUse] = useState(DEFAULTS.howToUse);
+  const [keyItems, setKeyItems] = useState<KeyItem[]>(DEFAULT_KEY_ITEMS);
+
+  function updateItem(i: number, patch: Partial<KeyItem>) {
+    setKeyItems((prev) => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+  }
+
+  function removeItem(i: number) {
+    setKeyItems((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function addItem() {
+    setKeyItems((prev) => [...prev, { label: "New item", bg: "#6b7280", border: "" }]);
+  }
 
   return (
     <aside
@@ -120,45 +175,56 @@ export function Sidebar({ editMode }: SidebarProps) {
           )}
         </Section>
 
-        <Section title="Subject to change">
-          {editMode ? (
-            <EditableText
-              value={subjectToChange}
-              onChange={setSubjectToChange}
-              multiline
-              className="text-[11px] leading-relaxed"
-              placeholder="Subject to change text"
-            />
-          ) : (
-            subjectToChange
-          )}
-        </Section>
-
         <Section title="Key">
-          <ul className="flex flex-col gap-1.5 text-[11px] text-brand-navy-900/80">
-            {keyLabels.map((label, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${keyColors[i]}`} />
+          <ul className="flex flex-col gap-1.5">
+            {keyItems.map((item, i) => (
+              <li key={i} className="group flex items-center gap-2">
+                <KeySwatch
+                  bg={item.bg}
+                  border={item.border}
+                  editMode={editMode}
+                  onChange={(color) => updateItem(i, { bg: color })}
+                />
                 {editMode ? (
-                  <input
-                    type="text"
-                    value={label}
-                    onChange={(e) => {
-                      const next = [...keyLabels];
-                      next[i] = e.target.value;
-                      setKeyLabels(next);
-                    }}
-                    className="flex-1 rounded border border-brand-purple-300 bg-white/70 px-1.5 py-0.5 text-[11px] text-brand-navy-900 outline-none focus:border-brand-purple-500 focus:ring-1 focus:ring-brand-purple-500/30"
-                  />
+                  <>
+                    <input
+                      type="text"
+                      value={item.label}
+                      onChange={(e) => updateItem(i, { label: e.target.value })}
+                      className="flex-1 rounded border border-brand-purple-300 bg-white/70 px-1.5 py-0.5 text-[11px] text-brand-navy-900 outline-none focus:border-brand-purple-500 focus:ring-1 focus:ring-brand-purple-500/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeItem(i)}
+                      title="Remove item"
+                      className="shrink-0 text-neutral-gray-400 opacity-0 transition-opacity hover:text-semantic-error group-hover:opacity-100"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </>
                 ) : (
-                  label
+                  <span className="text-[11px] text-brand-navy-900/80">{item.label}</span>
                 )}
               </li>
             ))}
           </ul>
+
+          {editMode && (
+            <button
+              type="button"
+              onClick={addItem}
+              className="mt-2 flex w-full items-center gap-1.5 rounded border border-dashed border-brand-navy-900/25 px-2 py-1 text-[11px] text-brand-navy-900/50 transition-colors hover:border-brand-purple-400 hover:text-brand-purple-500"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add item
+            </button>
+          )}
         </Section>
       </div>
-
     </aside>
   );
 }
