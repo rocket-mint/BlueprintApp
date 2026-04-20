@@ -88,6 +88,38 @@ const VIEWER_SCRIPT = `
     });
   }
 
+  // Mirror of CalloutBadge.tsx renderMarkdown — handles bullets, bold, italic, newlines.
+  function renderMarkdown(text) {
+    if (!text) return "";
+    var lines = String(text).split("\\n");
+    var html = "";
+    var inList = false;
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      var isBullet = line.slice(0, 2) === "- ";
+      var content = isBullet ? line.slice(2) : line;
+
+      // Inline bold / italic
+      var formatted = content
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+      if (isBullet) {
+        if (!inList) { html += '<ul style="margin:2px 0 2px 12px;padding:0;list-style:disc">'; inList = true; }
+        html += '<li style="margin:1px 0">' + formatted + '</li>';
+      } else {
+        if (inList) { html += '</ul>'; inList = false; }
+        if (line === "") {
+          html += '<br>';
+        } else {
+          html += '<p style="margin:1px 0;line-height:1.4">' + formatted + '</p>';
+        }
+      }
+    }
+    if (inList) html += '</ul>';
+    return html;
+  }
+
   function sortBy(arr, key) {
     return arr.slice().sort(function (a, b) { return (a[key] || 0) - (b[key] || 0); });
   }
@@ -149,13 +181,12 @@ const VIEWER_SCRIPT = `
   function renderCalloutBadge(c) {
     var st = CALLOUT_STYLES[c.type] || CALLOUT_STYLES.note;
     return ''
-      + '<div class="flex w-full items-start gap-1.5 rounded-md border p-1.5 ' + st.bg + ' ' + st.border + '"'
-      + (c.description ? ' title="' + esc(c.description) + '"' : '') + '>'
-      +   '<span class="shrink-0 text-[11px] leading-none ' + st.icon + '">' + st.sym + '</span>'
-      +   '<div class="min-w-0 flex-1 break-words">'
-      +     (c.label ? '<div class="text-[11px] font-semibold uppercase tracking-wider ' + st.text + '">' + esc(c.label) + '</div>' : '')
-      +     (c.title ? '<div class="text-[12px] font-medium leading-tight text-brand-navy-900">' + esc(c.title) + '</div>' : '')
-      +     (c.description ? '<p class="mt-0.5 text-[11px] leading-snug text-neutral-gray-600">' + esc(c.description) + '</p>' : '')
+      + '<div style="display:flex;width:100%;align-items:flex-start;gap:6px;border-radius:6px;border:1px solid;padding:6px;box-sizing:border-box" class="' + st.bg + ' ' + st.border + '">'
+      +   '<span style="flex-shrink:0;font-size:11px;line-height:1;margin-top:1px" class="' + st.icon + '">' + st.sym + '</span>'
+      +   '<div style="min-width:0;flex:1;word-break:break-word">'
+      +     (c.label ? '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px" class="' + st.text + '">' + esc(c.label) + '</div>' : '')
+      +     (c.title ? '<div style="font-size:12px;font-weight:500;line-height:1.3;margin-bottom:2px;color:#0f1724">' + esc(c.title) + '</div>' : '')
+      +     (c.description ? '<div style="font-size:11px;color:#4b5563">' + renderMarkdown(c.description) + '</div>' : '')
       +   '</div>'
       + '</div>';
   }

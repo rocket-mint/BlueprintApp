@@ -47,13 +47,6 @@ const CALLOUT_ICONS: Record<CalloutType, string> = {
   note:        "\u2022",  // •
 };
 
-const CALLOUT_LABELS: Record<CalloutType, string> = {
-  pain_point:  "Pain Point",
-  opportunity: "Opportunity",
-  highlight:   "Highlight",
-  question:    "Question",
-  note:        "Note",
-};
 
 interface Props {
   callout: Callout;

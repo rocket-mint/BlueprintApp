@@ -3,7 +3,7 @@
 // Opens from the right when editingEntity is set. Shows form fields
 // appropriate to the entity type, with Save/Cancel/Delete actions.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlueprint } from "../hooks/useBlueprint";
 import type { EditableEntityType } from "../context/BlueprintContext";
 import type {
@@ -810,7 +810,7 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
 //   Edit existing : "${index}"                          (index in mm.points)
 //   Add (mm exists): "new:${x}:${score}"
 //   Add (no mm yet): "new:${x}:${score}:${swimlaneId}"
-function MotivationPointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
+function MotivationPointForm({ id, bp, dispatch, isNew: _isNew, parentId, onClose }: FormProps) {
   const parts = (parentId ?? "").split(":");
   const isAdd = parts[0] === "new";
   const pointIndex = isAdd ? -1 : parseInt(parts[0] ?? "0", 10);

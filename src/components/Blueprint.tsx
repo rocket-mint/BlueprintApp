@@ -44,7 +44,6 @@ export function Blueprint() {
       <div className="w-max min-w-full rounded-2xl bg-neutral-sand-50 p-2 sm:p-3">
         <BlueprintCanvas
           blueprint={blueprint}
-          stages={orderedStages}
           touchpointMedia={touchpointMedia}
           collapsedSwimlanes={collapsedSwimlanes}
           collapsedSections={collapsedSections}
