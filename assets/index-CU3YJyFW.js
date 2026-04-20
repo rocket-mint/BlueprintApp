@@ -60,6 +60,13 @@ use chrome, FireFox or Internet Explorer 11`)}var a=e(`safe-buffer`),o=e(`random
   // ── State ──
   var modalTpId        = null;
   var collapsedLanes   = {};
+  var sidebarRendered  = false;
+  var keyItems = [
+    { label: "Journey stage",    bg: "#0f1724", border: "" },
+    { label: "Touchpoint card",  bg: "#ffffff", border: "#d1d5db" },
+    { label: "Motivation curve", bg: "#8073ff", border: "" },
+    { label: "Callout",          bg: "#f59e0b", border: "" }
+  ];
 
   // ── Lookups ──
   var stageById      = {};
@@ -75,6 +82,17 @@ use chrome, FireFox or Internet Explorer 11`)}var a=e(`safe-buffer`),o=e(`random
   for (i = 0; i < (DATA.stageGroups||[]).length; i++) { stageGroupById[DATA.stageGroups[i].id] = DATA.stageGroups[i]; }
   for (i = 0; i < (DATA.motivationMaps||[]).length; i++){ mmBySwimlane[DATA.motivationMaps[i].swimlaneId] = DATA.motivationMaps[i]; }
   for (i = 0; i < DATA.touchpoints.length; i++)        { tpById[DATA.touchpoints[i].id] = DATA.touchpoints[i]; }
+
+  // ── Key-section globals (called from inline oninput/onclick in key items) ──
+  window.__kc = function (ki, val) {
+    if (ki >= 0 && ki < keyItems.length) { keyItems[ki].bg = val; renderKey(); }
+  };
+  window.__kl = function (ki, val) {
+    if (ki >= 0 && ki < keyItems.length) { keyItems[ki].label = val; }
+  };
+  window.__kd = function (ki) {
+    keyItems.splice(ki, 1); renderKey();
+  };
 
   // ── Utilities ──
   function esc(s) {
@@ -672,21 +690,45 @@ use chrome, FireFox or Internet Explorer 11`)}var a=e(`safe-buffer`),o=e(`random
       + '</div>';
   }
 
-  function renderSidebar() {
-    var keyItems = [
-      { label: "Journey stage",    bg: "#0f1724",  border: "none" },
-      { label: "Touchpoint card",  bg: "#ffffff",  border: "1px solid #d1d5db" },
-      { label: "Motivation curve", bg: "#8073ff",  border: "none" },
-      { label: "Callout",          bg: "#f59e0b",  border: "none" }
-    ];
-    var keyHtml = '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px">';
+  function renderKeyHtml() {
+    var html = '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">';
     for (var ki = 0; ki < keyItems.length; ki++) {
-      keyHtml += '<li style="display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(15,23,36,0.75)">'
-        + '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;flex-shrink:0;background:' + keyItems[ki].bg + ';border:' + keyItems[ki].border + '"></span>'
-        + esc(keyItems[ki].label) + '</li>';
+      var item = keyItems[ki];
+      var bStyle = item.border ? 'border:1px solid ' + item.border + ';' : '';
+      html += '<li style="display:flex;align-items:center;gap:7px" '
+        + 'onmouseenter="this.querySelector('[data-xbtn]').style.opacity='1'" '
+        + 'onmouseleave="this.querySelector('[data-xbtn]').style.opacity='0'">';
+      // Color swatch — wrapped in label so clicking it opens the native color picker
+      html += '<label style="flex-shrink:0;cursor:pointer;display:inline-flex;position:relative" title="Click to change color">'
+        + '<span style="display:block;width:13px;height:13px;border-radius:2px;' + bStyle + 'background:' + esc(item.bg) + '"></span>'
+        + '<input type="color" value="' + esc(item.bg) + '" oninput="__kc(' + ki + ',this.value)" '
+        + 'style="position:absolute;inset:0;opacity:0;width:100%;height:100%;padding:0;border:0;cursor:pointer"></label>';
+      // Label — contenteditable, saves to state via __kl on every keystroke (no re-render)
+      html += '<span contenteditable="true" spellcheck="false" oninput="__kl(' + ki + ',this.innerText)" '
+        + 'style="flex:1;font-size:11px;color:rgba(15,23,36,0.75);outline:none;word-break:break-word">'
+        + esc(item.label) + '</span>';
+      // Delete button — hidden until row hover
+      html += '<button data-xbtn type="button" onclick="__kd(' + ki + ')" '
+        + 'style="opacity:0;transition:opacity 150ms;flex-shrink:0;background:none;border:none;cursor:pointer;'
+        + 'color:#9ca3af;font-size:17px;line-height:1;padding:0;width:16px;height:16px;'
+        + 'display:flex;align-items:center;justify-content:center" title="Remove">&times;</button>';
+      html += '</li>';
     }
-    keyHtml += '</ul>';
+    html += '</ul>';
+    html += '<button data-action="add-key-item" type="button" '
+      + 'style="margin-top:8px;width:100%;display:flex;align-items:center;gap:5px;background:none;'
+      + 'border:1px dashed rgba(15,23,36,0.25);border-radius:6px;padding:5px 8px;cursor:pointer;'
+      + 'font-size:11px;color:rgba(15,23,36,0.5)">'
+      + '<span style="font-size:14px;line-height:1">+</span>Add item</button>';
+    return html;
+  }
 
+  function renderKey() {
+    var el = document.getElementById("sidebar-key");
+    if (el) el.innerHTML = renderKeyHtml();
+  }
+
+  function renderSidebar() {
     return ''
       + '<aside style="position:sticky;top:0;z-index:10;display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;border-right:1px solid rgba(15,23,36,0.1);background:#dce8f0;padding:32px 20px 24px;box-sizing:border-box">'
       + '<div style="margin-bottom:20px">'
@@ -695,19 +737,16 @@ use chrome, FireFox or Internet Explorer 11`)}var a=e(`safe-buffer`),o=e(`random
       + '</div>'
       + '<p style="margin:0 0 20px;font-size:12px;line-height:1.6;color:rgba(15,23,36,0.75)">The modern customer journey is composed of multiple, overlapping touchpoints and interactions that are not as clearly defined as traditional marketing funnels.</p>'
       + renderSidebarSection("How to use", "Drag horizontally on the blueprint to pan across the journey. Click any touchpoint card to see details.")
-      + renderSidebarSection("Subject to change", "This map is a living artifact. As research and design iterate, the stages, swimlanes, and touchpoints will evolve.")
-      + '<div>'
+      + '<div style="margin-top:auto;padding-top:16px">'
       + '<h3 style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0f1724">Key</h3>'
-      + keyHtml
+      + '<div id="sidebar-key">' + renderKeyHtml() + '</div>'
       + '</div>'
       + '</aside>';
   }
 
   // ── Main render ──
   function render() {
-    var html = ''
-      + '<div style="display:flex;min-height:100vh">'
-      + renderSidebar()
+    var mainHtml = ''
       + '<div data-scroller style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-x:auto;cursor:grab">'
       + '<header style="position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;border-bottom:1px solid #e5e7eb;background:#fff;padding:12px 24px;flex-shrink:0">'
       + '<span style="font-size:15px;font-weight:700;color:#0f1724">' + esc(TITLE) + '</span>'
@@ -717,10 +756,21 @@ use chrome, FireFox or Internet Explorer 11`)}var a=e(`safe-buffer`),o=e(`random
       + '<div style="display:flex;flex-direction:column;gap:24px;min-width:max-content">';
 
     var sections = sortBy(DATA.sections, "order");
-    for (var i = 0; i < sections.length; i++) html += renderSection(sections[i]);
+    for (var i = 0; i < sections.length; i++) mainHtml += renderSection(sections[i]);
 
-    html += '</div></main></div></div>' + renderModal();
-    document.getElementById("root").innerHTML = html;
+    mainHtml += '</div></main></div>' + renderModal();
+
+    if (!sidebarRendered) {
+      document.getElementById("root").innerHTML =
+        '<div style="display:flex;min-height:100vh">'
+        + renderSidebar()
+        + '<div id="bp-main" style="flex:1;min-width:0;display:flex;flex-direction:column">' + mainHtml + '</div>'
+        + '</div>';
+      sidebarRendered = true;
+    } else {
+      var mainEl = document.getElementById("bp-main");
+      if (mainEl) mainEl.innerHTML = mainHtml;
+    }
   }
 
   // ── Event delegation ──
@@ -736,6 +786,20 @@ use chrome, FireFox or Internet Explorer 11`)}var a=e(`safe-buffer`),o=e(`random
     } else if (action === "toggle-lane") {
       if (collapsedLanes[id]) delete collapsedLanes[id]; else collapsedLanes[id] = true;
       render();
+    } else if (action === "add-key-item") {
+      keyItems.push({ label: "New item", bg: "#6b7280", border: "" });
+      renderKey();
+      setTimeout(function () {
+        var spans = document.querySelectorAll("#sidebar-key [contenteditable]");
+        if (spans.length) {
+          var last = spans[spans.length - 1];
+          last.focus();
+          var sel = window.getSelection();
+          var range = document.createRange();
+          range.selectNodeContents(last);
+          if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+        }
+      }, 20);
     }
   });
 
