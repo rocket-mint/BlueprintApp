@@ -146,6 +146,12 @@ const VIEWER_SCRIPT = `
   var TITLE   = window.__BLUEPRINT_TITLE__   || "Service Blueprint";
   var MM_SVGS = window.__BLUEPRINT_MM_SVGS__ || {};
 
+  if (!DATA || !DATA.sections) {
+    document.getElementById("root").innerHTML =
+      '<div style="padding:40px;font-family:sans-serif;color:#6b7280">Blueprint data missing.</div>';
+    return;
+  }
+
   // Layout constants — mirror src/lib/blueprintLayout.ts + BlueprintCanvas
   var LABEL_COL_W   = 150;
   var MIN_STAGE_W   = 180;
@@ -914,7 +920,18 @@ const VIEWER_SCRIPT = `
     });
   })();
 
-  render();
+  try {
+    render();
+  } catch (err) {
+    var rootEl = document.getElementById("root");
+    if (rootEl) {
+      rootEl.innerHTML = '<div style="padding:40px 32px;font-family:monospace;font-size:13px;color:#b91c1c">'
+        + '<strong>Blueprint render error</strong><br><br>'
+        + String(err)
+        + '</div>';
+    }
+    throw err;
+  }
 })();
 `;
 
