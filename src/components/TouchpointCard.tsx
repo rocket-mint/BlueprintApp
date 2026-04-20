@@ -49,9 +49,11 @@ export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteE
       image
     );
 
+  const titleOnly = !showImage && !tp.channelType && !tp.description && !tp.customNotes && !effectiveLink;
+
   return (
     <div
-      className={`group/tp relative flex h-full min-h-[80px] min-w-0 flex-col gap-1 overflow-visible rounded-[10px] border-2 bg-white p-3.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.06)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.1)] ${isEditing ? "border-brand-cyan-500 ring-2 ring-brand-cyan-500" : "border-neutral-gray-200"}`}
+      className={`group/tp relative flex h-full min-h-[80px] min-w-0 flex-col gap-1 overflow-visible rounded-[10px] border-2 bg-white p-3.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.06)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.1)] ${titleOnly ? "items-center justify-center text-center" : ""} ${isEditing ? "border-brand-cyan-500 ring-2 ring-brand-cyan-500" : "border-neutral-gray-200"}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

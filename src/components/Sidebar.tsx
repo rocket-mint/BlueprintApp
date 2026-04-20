@@ -58,7 +58,6 @@ export function Sidebar({ editMode }: SidebarProps) {
     "Journey stage",
     "Touchpoint card",
     "Motivation curve",
-    "Insight",
     "Callout",
   ]);
 
@@ -66,7 +65,6 @@ export function Sidebar({ editMode }: SidebarProps) {
     "bg-brand-navy-1000",
     "border border-neutral-gray-300 bg-white",
     "bg-brand-purple-500",
-    "bg-brand-cyan-500",
     "bg-semantic-warning",
   ];
 

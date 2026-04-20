@@ -35,8 +35,5 @@ export const touchpointId = () => generateId("tp");
 /** Generate a callout ID. */
 export const calloutId = () => generateId("co");
 
-/** Generate an insight ID. */
-export const insightId = () => generateId("ins");
-
 /** Generate a motivation map ID. */
 export const motivationMapId = () => generateId("mm");

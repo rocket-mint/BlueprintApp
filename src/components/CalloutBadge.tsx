@@ -1,9 +1,35 @@
 // CalloutBadge — small colored badge for callouts shown in swimlane cells.
 
+import React from "react";
 import type { Callout, CalloutType } from "../types/blueprint";
 import type { EditingEntity, EditableEntityType } from "../context/BlueprintContext";
 import { useBlueprint } from "../hooks/useBlueprint";
 import { DeleteButton } from "./EditControls";
+
+function renderMarkdown(text: string): React.ReactNode {
+  return text.split("\n").map((line, li) => {
+    const isBullet = line.startsWith("- ");
+    const content = isBullet ? line.slice(2) : line;
+
+    // Parse inline bold/italic
+    const parts: React.ReactNode[] = [];
+    const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*)/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(content)) !== null) {
+      if (m.index > last) parts.push(content.slice(last, m.index));
+      if (m[2] !== undefined) parts.push(<strong key={m.index}>{m[2]}</strong>);
+      else if (m[3] !== undefined) parts.push(<em key={m.index}>{m[3]}</em>);
+      last = m.index + m[0].length;
+    }
+    if (last < content.length) parts.push(content.slice(last));
+
+    if (isBullet) {
+      return <li key={li} className="ml-3 list-disc">{parts}</li>;
+    }
+    return line === "" ? <br key={li} /> : <p key={li} className="leading-snug">{parts}</p>;
+  });
+}
 
 const CALLOUT_STYLES: Record<CalloutType, { bg: string; border: string; icon: string; text: string }> = {
   pain_point:  { bg: "bg-semantic-error/10",   border: "border-semantic-error/30",   icon: "text-semantic-error",   text: "text-semantic-error" },
@@ -43,23 +69,27 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
 
   return (
     <div
-      className={`group/co flex items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${isEditing ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500" : style.border}`}
+      className={`group/co flex w-full items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${isEditing ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500" : style.border}`}
       title={callout.description ?? undefined}
     >
       <span className={`shrink-0 text-[11px] leading-none ${style.icon}`}>
         {CALLOUT_ICONS[callout.type]}
       </span>
-      <div className="min-w-0 flex-1">
-        <div className={`text-[10px] font-semibold uppercase tracking-wider ${style.text}`}>
-          {callout.label || CALLOUT_LABELS[callout.type]}
-        </div>
-        <div className="text-[11px] font-medium leading-tight text-brand-navy-900">
-          {callout.title}
-        </div>
+      <div className="min-w-0 flex-1 break-words">
+        {callout.label && (
+          <div className={`text-[11px] font-semibold uppercase tracking-wider ${style.text}`}>
+            {callout.label}
+          </div>
+        )}
+        {callout.title && (
+          <div className="text-[12px] font-medium leading-tight text-brand-navy-900">
+            {callout.title}
+          </div>
+        )}
         {callout.description && (
-          <p className="mt-0.5 text-[10px] leading-snug text-neutral-gray-600">
-            {callout.description}
-          </p>
+          <div className="mt-0.5 text-[11px] text-neutral-gray-600 [&_li]:ml-3 [&_li]:list-disc [&_ul]:pl-1">
+            {renderMarkdown(callout.description)}
+          </div>
         )}
       </div>
       {editMode && onEditEntity && (

@@ -233,34 +233,6 @@ export function createSampleBlueprint(): Blueprint {
       },
     ],
 
-    // ── Insights ───────────────────────────────────────────────────────────
-    insights: [
-      {
-        id: "ins-qualify",
-        stageId: "st-qualify",
-        title: "Deals stall post-demo",
-        text: "68% of lost deals go dark within 2 weeks of the product demo. Timely follow-up is critical.",
-        dataPoint: "68%",
-        dataSource: "Win/loss analysis Q3",
-      },
-      {
-        id: "ins-close",
-        stageId: "st-close",
-        title: "Contract cycle time",
-        text: "Average time from verbal agreement to signed contract is 11 days. Legal review is the primary bottleneck.",
-        dataPoint: "11 days",
-        dataSource: "CRM data",
-      },
-      {
-        id: "ins-configure",
-        stageId: "st-configure",
-        title: "Requirements quality drives speed",
-        text: "Customers who submit complete requirements on day 1 go live 40% faster than those who iterate.",
-        dataPoint: "40% faster",
-        dataSource: "Onboarding cohort study",
-      },
-    ],
-
     motivationMaps: [],
   };
 }

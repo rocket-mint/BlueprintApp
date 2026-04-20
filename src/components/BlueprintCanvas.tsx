@@ -20,7 +20,6 @@ import type { Media } from "./MediaModal";
 import { TouchpointCard } from "./TouchpointCard";
 import { CalloutBadge } from "./CalloutBadge";
 import { MotivationMap } from "./MotivationMap";
-import { InsightsSection } from "./InsightsSection";
 import { EditButton, DeleteButton, AddButton } from "./EditControls";
 import type { EditingEntity, EditableEntityType } from "../context/BlueprintContext";
 import {
@@ -519,6 +518,17 @@ function SectionCard({
       ? sectionPhases.filter((p) => (p.groupId ?? p.id) === sl.phaseId)
       : undefined;
 
+    // True if any column in this swimlane has at least one touchpoint.
+    const rowHasTouchpoints = gridColumns.some((col) => {
+      if (groupPhases) {
+        const stagePhases = groupPhases.filter((p) => p.stageId === col.stageId);
+        return stagePhases.some(
+          (phase) => touchpointsForColumn(blueprint.touchpoints, sl.id, col, phase.id).length > 0,
+        );
+      }
+      return touchpointsForColumn(blueprint.touchpoints, sl.id, col, undefined).length > 0;
+    });
+
     return (
       <MomentsGridRow
         key={sl.id}
@@ -536,6 +546,7 @@ function SectionCard({
         groupPhases={groupPhases}
         phaseMinWidths={phaseMinWidths}
         editingEntityId={editingEntityId}
+        rowHasTouchpoints={rowHasTouchpoints}
       />
     );
   }
@@ -931,6 +942,7 @@ function MomentsGridRow({
   groupPhases,
   phaseMinWidths,
   editingEntityId,
+  rowHasTouchpoints,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
@@ -949,6 +961,8 @@ function MomentsGridRow({
   /** Per-phase minimum pixel widths — must match the phase header row so pills and sub-cells align. */
   phaseMinWidths?: Map<string, number>;
   editingEntityId?: string | null;
+  /** True if any column in this swimlane row has at least one touchpoint. */
+  rowHasTouchpoints: boolean;
 }) {
   return (
     <div style={{ display: "contents" }}>
@@ -1045,19 +1059,19 @@ function MomentsGridRow({
                     </React.Fragment>
                   );
                 })}
-                {allPhaseTouchpoints.length === 0 && !editMode && (
+                {allPhaseTouchpoints.length === 0 && !editMode && rowHasTouchpoints && (
                   <div className="min-h-[60px]" />
                 )}
               </div>
               {/* Callouts — separate row, each with width matching its assigned phases */}
               {allCallouts.length > 0 && (
-                <div className="relative flex flex-col gap-1">
+                <div className="relative flex min-w-0 flex-col gap-1 [contain:inline-size]">
                   {allCallouts.map((c) => {
                     const ids = c.phaseIds;
-                    let calloutWidth = totalPhaseWidth;
+                    let calloutWidth: number | "100%" = rowHasTouchpoints ? totalPhaseWidth : "100%";
                     let calloutLeft = 0;
 
-                    if (ids && ids.length > 0 && ids.length < stagePhases.length) {
+                    if (rowHasTouchpoints && ids && ids.length > 0 && ids.length < stagePhases.length) {
                       const matched = new Set(ids);
                       const firstIdx = stagePhases.findIndex((p) => matched.has(p.id));
                       const lastIdx  = stagePhases.reduce((last, p, idx) => (matched.has(p.id) ? idx : last), -1);
@@ -1132,13 +1146,13 @@ function MomentsGridRow({
                     +
                   </button>
                 )}
-                {colTouchpoints.length === 0 && !editMode && (
+                {colTouchpoints.length === 0 && !editMode && rowHasTouchpoints && (
                   <div className="min-h-[60px]" />
                 )}
               </div>
               {/* Callouts row */}
               {colCallouts.length > 0 && (
-                <div className="flex w-full flex-col gap-1">
+                <div className="flex min-w-0 flex-col gap-1 [contain:inline-size]">
                   {colCallouts.map((c) => (
                     <CalloutBadge key={c.id} callout={c} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
                   ))}
@@ -1303,7 +1317,7 @@ export function BlueprintCanvas({
   onTogglePhaseGroupCollapse,
   editingEntityId,
 }: Props) {
-  const { sections, insights } = blueprint;
+  const { sections } = blueprint;
 
   const sortedSections = useMemo(
     () => [...sections].sort((a, b) => a.order - b.order),
@@ -1378,10 +1392,6 @@ export function BlueprintCanvas({
         <AddButton type="section" label="Section" onClick={onEditEntity} />
       )}
 
-      {/* Insights — global, all stages */}
-      <div style={{ minWidth: minWidthFor(stages.length) }}>
-        <InsightsSection stages={stages} insights={insights} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
-      </div>
     </div>
   );
 }

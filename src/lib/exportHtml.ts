@@ -129,7 +129,7 @@ const VIEWER_SCRIPT = `
 
   // ── Grid style helpers ──
   function gridStyle(stageCount) {
-    return "display:grid;grid-template-columns:" + LABEL_COL_W + "px repeat(" + stageCount + ",minmax(" + MIN_STAGE_W + "px,1fr));gap:" + STAGE_GAP + "px;";
+    return "display:grid;grid-template-columns:" + LABEL_COL_W + "px repeat(" + stageCount + ",minmax(" + MIN_STAGE_W + "px,max-content));gap:" + STAGE_GAP + "px;";
   }
 
   function chevronSvg(open) {
@@ -149,13 +149,13 @@ const VIEWER_SCRIPT = `
   function renderCalloutBadge(c) {
     var st = CALLOUT_STYLES[c.type] || CALLOUT_STYLES.note;
     return ''
-      + '<div class="flex items-start gap-1.5 rounded-md border p-1.5 ' + st.bg + ' ' + st.border + '"'
+      + '<div class="flex w-full items-start gap-1.5 rounded-md border p-1.5 ' + st.bg + ' ' + st.border + '"'
       + (c.description ? ' title="' + esc(c.description) + '"' : '') + '>'
       +   '<span class="shrink-0 text-[11px] leading-none ' + st.icon + '">' + st.sym + '</span>'
-      +   '<div class="min-w-0 flex-1">'
-      +     '<div class="text-[10px] font-semibold uppercase tracking-wider ' + st.text + '">' + esc(st.label) + '</div>'
-      +     '<div class="text-[11px] font-medium leading-tight text-brand-navy-900">' + esc(c.title) + '</div>'
-      +     (c.description ? '<p class="mt-0.5 text-[10px] leading-snug text-neutral-gray-600">' + esc(c.description) + '</p>' : '')
+      +   '<div class="min-w-0 flex-1 break-words">'
+      +     (c.label ? '<div class="text-[11px] font-semibold uppercase tracking-wider ' + st.text + '">' + esc(c.label) + '</div>' : '')
+      +     (c.title ? '<div class="text-[12px] font-medium leading-tight text-brand-navy-900">' + esc(c.title) + '</div>' : '')
+      +     (c.description ? '<p class="mt-0.5 text-[11px] leading-snug text-neutral-gray-600">' + esc(c.description) + '</p>' : '')
       +   '</div>'
       + '</div>';
   }
@@ -489,31 +489,18 @@ const VIEWER_SCRIPT = `
 
   function renderMotivationSwimlane(sl, stages) {
     var meta = mmBySwimlane[sl.id];
-    var scores = (meta && meta.stageScores) || {};
-
-    // Collect flat list of score values, one per stage (using first point of each stage/phase)
-    var flat = [];
-    for (var si = 0; si < stages.length; si++) {
-      var stage = stages[si];
-      var pts   = scores[stage.id];
-      // Fall back to first phase of stage
-      if (!pts || pts.length === 0) {
-        var stagePhases = (DATA.phases || []).filter(function (p) { return p.stageId === stage.id; });
-        for (var pi = 0; pi < stagePhases.length && (!pts || pts.length === 0); pi++) {
-          pts = scores[stagePhases[pi].id];
-        }
-      }
-      flat.push(pts && pts.length > 0 ? clamp01(pts[0].score) : 0.33);
-    }
+    // New flat points model: [{x: 0-1, score: 0-1, title?, description?}]
+    var rawPoints = (meta && meta.points) || [];
+    rawPoints = rawPoints.slice().sort(function (a, b) { return a.x - b.x; });
 
     var VW = MM_VW, VH = MM_VH;
     var innerW = VW - MM_MLEFT - MM_MRIGHT;
     var baseY  = MM_MTOP + MM_INNER_H;
 
-    var pts2 = flat.map(function (v, i) {
+    var pts2 = rawPoints.map(function (pt) {
       return [
-        flat.length === 1 ? MM_MLEFT + innerW / 2 : MM_MLEFT + (i / (flat.length - 1)) * innerW,
-        MM_MTOP + (1 - v) * MM_INNER_H
+        MM_MLEFT + clamp01(pt.x) * innerW,
+        MM_MTOP + (1 - clamp01(pt.score)) * MM_INNER_H
       ];
     });
 
@@ -534,7 +521,7 @@ const VIEWER_SCRIPT = `
 
     var svgHtml = ''
       + '<div class="overflow-hidden rounded-xl border border-neutral-gray-200 bg-brand-blue-50">'
-      + '<svg viewBox="0 0 ' + VW + ' ' + VH + '" class="block h-auto w-full" role="img" aria-label="Motivation curve">'
+      + '<svg viewBox="0 0 ' + VW + ' ' + VH + '" preserveAspectRatio="none" style="display:block;width:100%;height:' + VH + 'px" role="img" aria-label="Motivation curve">'
       + '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">'
       + '<stop offset="0%" stop-color="#8073ff" stop-opacity="0.45"/><stop offset="100%" stop-color="#8073ff" stop-opacity="0.04"/>'
       + '</linearGradient></defs>'
@@ -568,46 +555,6 @@ const VIEWER_SCRIPT = `
     }
 
     return '<div style="display:contents">' + chartLabelCell + chartContentCell + '</div>' + metaRow;
-  }
-
-  // ── Insights ──
-  function renderInsightCard(ins) {
-    return ''
-      + '<div class="flex flex-col gap-1 rounded-lg border border-neutral-gray-200 bg-neutral-gray-50 p-2.5">'
-      + (ins.dataPoint ? '<div class="text-lg font-bold leading-none text-brand-cyan-500">' + esc(ins.dataPoint) + '</div>' : "")
-      + '<div class="text-[11px] font-bold leading-tight text-brand-navy-900">' + esc(ins.title) + '</div>'
-      + (ins.text ? '<p class="text-[10px] leading-snug text-neutral-gray-700">' + esc(ins.text) + '</p>' : "")
-      + (ins.quote ? '<p class="text-[9px] italic leading-snug text-neutral-gray-500">\u201c' + esc(ins.quote) + '\u201d</p>' : "")
-      + (ins.dataSource ? '<p class="text-[9px] text-neutral-gray-500">Source: ' + esc(ins.dataSource) + '</p>' : "")
-      + '</div>';
-  }
-
-  function renderInsightsForSection(stages) {
-    if (!DATA.insights || DATA.insights.length === 0) return "";
-    var stageIds = stages.map(function (s) { return s.id; });
-    var relevant = DATA.insights.filter(function (ins) { return stageIds.indexOf(ins.stageId) >= 0; });
-    if (relevant.length === 0) return "";
-    var byStage = {};
-    for (var i = 0; i < relevant.length; i++) {
-      if (!byStage[relevant[i].stageId]) byStage[relevant[i].stageId] = [];
-      byStage[relevant[i].stageId].push(relevant[i]);
-    }
-    var html = '<div style="display:contents">';
-    html += '<div class="flex items-start justify-end pr-2 pt-3">'
-      + '<h3 class="text-right text-[14px] font-bold leading-tight text-brand-navy-1000">Insights</h3>'
-      + '</div>';
-    for (var si = 0; si < stages.length; si++) {
-      var items = byStage[stages[si].id] || [];
-      html += '<div class="flex min-w-0 flex-col gap-2 pt-3">';
-      if (items.length === 0) {
-        html += '<div class="flex h-full min-h-[60px] items-center justify-center rounded-lg border border-dashed border-neutral-gray-200 text-[10px] text-neutral-gray-300">—</div>';
-      } else {
-        for (var ii = 0; ii < items.length; ii++) html += renderInsightCard(items[ii]);
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
   }
 
   // ── Section ──
@@ -662,12 +609,12 @@ const VIEWER_SCRIPT = `
     }
     items.sort(function (a, b) { return a.order - b.order; });
 
-    var html = '<section class="rounded-[20px] bg-white px-6 py-10 shadow-[0_2px_10px_0_rgba(15,23,36,0.05)] sm:px-10 sm:py-12">';
+    var html = '<section style="border-radius:20px;background:#ffffff;padding:40px 24px;box-shadow:0 2px 10px 0 rgba(15,23,36,0.05);min-width:max-content">';
 
     // Section title
-    html += '<div class="mb-8">'
-      + '<h2 class="text-xl font-light leading-tight text-brand-navy-1000 sm:text-2xl">' + esc(section.name) + '</h2>'
-      + (section.description ? '<p class="text-sm text-neutral-gray-600">' + esc(section.description) + '</p>' : "")
+    html += '<div style="margin-bottom:32px">'
+      + '<h2 style="margin:0;font-size:22px;font-weight:300;line-height:1.25;color:#0f1724">' + esc(section.name) + '</h2>'
+      + (section.description ? '<p style="margin:4px 0 0;font-size:14px;color:#6b7280">' + esc(section.description) + '</p>' : "")
       + '</div>';
 
     // Grid
@@ -701,7 +648,6 @@ const VIEWER_SCRIPT = `
       }
     }
 
-    html += renderInsightsForSection(stages);
     html += '</div>'; // grid
     html += '</section>';
     return html;
@@ -742,21 +688,63 @@ const VIEWER_SCRIPT = `
       + '</div></div>';
   }
 
+  // ── Sidebar ──
+  function renderSidebarSection(title, body) {
+    return ''
+      + '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">'
+      + '<h3 style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0f1724">' + esc(title) + '</h3>'
+      + '<div style="font-size:11px;line-height:1.6;color:rgba(15,23,36,0.7)">' + esc(body) + '</div>'
+      + '</div>';
+  }
+
+  function renderSidebar() {
+    var keyItems = [
+      { label: "Journey stage",    bg: "#0f1724",  border: "none" },
+      { label: "Touchpoint card",  bg: "#ffffff",  border: "1px solid #d1d5db" },
+      { label: "Motivation curve", bg: "#8073ff",  border: "none" },
+      { label: "Callout",          bg: "#f59e0b",  border: "none" }
+    ];
+    var keyHtml = '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px">';
+    for (var ki = 0; ki < keyItems.length; ki++) {
+      keyHtml += '<li style="display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(15,23,36,0.75)">'
+        + '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;flex-shrink:0;background:' + keyItems[ki].bg + ';border:' + keyItems[ki].border + '"></span>'
+        + esc(keyItems[ki].label) + '</li>';
+    }
+    keyHtml += '</ul>';
+
+    return ''
+      + '<aside style="position:sticky;top:0;z-index:10;display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;border-right:1px solid rgba(15,23,36,0.1);background:#dce8f0;padding:32px 20px 24px;box-sizing:border-box">'
+      + '<div style="margin-bottom:20px">'
+      + '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.2em;color:rgba(15,23,36,0.5);margin-bottom:4px">Just A</div>'
+      + '<h2 style="margin:0;font-size:20px;font-weight:700;line-height:1.25;color:#0f1724">' + esc(TITLE) + '</h2>'
+      + '</div>'
+      + '<p style="margin:0 0 20px;font-size:12px;line-height:1.6;color:rgba(15,23,36,0.75)">The modern customer journey is composed of multiple, overlapping touchpoints and interactions that are not as clearly defined as traditional marketing funnels.</p>'
+      + renderSidebarSection("How to use", "Drag horizontally on the blueprint to pan across the journey. Click any touchpoint card to see details.")
+      + renderSidebarSection("Subject to change", "This map is a living artifact. As research and design iterate, the stages, swimlanes, and touchpoints will evolve.")
+      + '<div>'
+      + '<h3 style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0f1724">Key</h3>'
+      + keyHtml
+      + '</div>'
+      + '</aside>';
+  }
+
   // ── Main render ──
   function render() {
     var html = ''
-      + '<div class="flex min-h-screen flex-col">'
-      + '<header class="sticky top-0 z-40 flex items-center gap-4 border-b border-neutral-gray-200 bg-white px-6 py-3">'
-      + '<span class="text-[15px] font-bold text-brand-navy-1000">' + esc(TITLE) + '</span>'
-      + '<span class="ml-auto text-[11px] text-neutral-gray-500">Service Blueprint \u2014 Read only</span>'
+      + '<div style="display:flex;min-height:100vh">'
+      + renderSidebar()
+      + '<div data-scroller style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-x:auto;cursor:grab">'
+      + '<header style="position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;border-bottom:1px solid #e5e7eb;background:#fff;padding:12px 24px;flex-shrink:0">'
+      + '<span style="font-size:15px;font-weight:700;color:#0f1724">' + esc(TITLE) + '</span>'
+      + '<span style="margin-left:auto;font-size:11px;color:#6b7280">Service Blueprint \u2014 Read only</span>'
       + '</header>'
-      + '<main class="flex-1 overflow-x-auto px-4 py-6 sm:px-8">'
-      + '<div class="flex flex-col gap-6">';
+      + '<main style="flex:1;padding:24px 32px">'
+      + '<div style="display:flex;flex-direction:column;gap:24px;min-width:max-content">';
 
     var sections = sortBy(DATA.sections, "order");
     for (var i = 0; i < sections.length; i++) html += renderSection(sections[i]);
 
-    html += '</div></main></div>' + renderModal();
+    html += '</div></main></div></div>' + renderModal();
     document.getElementById("root").innerHTML = html;
   }
 
@@ -787,7 +775,7 @@ const VIEWER_SCRIPT = `
       if (e.button !== 0) return;
       var t = e.target;
       if (!t || t.closest("button,a,input,select,textarea,[data-action]")) return;
-      var scroller = t.closest(".overflow-x-auto");
+      var scroller = t.closest("[data-scroller]");
       if (!scroller) return;
       dragEl = scroller; startX = e.clientX; startScroll = scroller.scrollLeft; moved = 0; capturedId = e.pointerId;
       scroller.style.cursor = "grabbing"; scroller.style.userSelect = "none";
@@ -835,9 +823,9 @@ export function downloadBlueprintHtml(
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n' +
     "  <title>Service Blueprint \u2014 " + title + "</title>\n" +
     "  <style>\n" + css + "\n  </style>\n" +
-    "  <style>.overflow-x-auto { cursor: grab; }</style>\n" +
+    "  <style>*{box-sizing:border-box}body{margin:0;padding:0;background:#f5f0eb}[data-scroller]{cursor:grab}[data-scroller]:active{cursor:grabbing}</style>\n" +
     "</head>\n" +
-    '<body class="min-h-screen bg-neutral-sand-50">\n' +
+    '<body style="margin:0;padding:0;background:#f5f0eb">\n' +
     '  <div id="root"></div>\n' +
     "  <script>\n" +
     "    window.__BLUEPRINT_DATA__  = " + safeJsonForScript(data) + ";\n" +

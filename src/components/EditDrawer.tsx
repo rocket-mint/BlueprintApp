@@ -13,7 +13,6 @@ import type {
   Swimlane,
   Touchpoint,
   Callout,
-  Insight,
   CalloutType,
   MotivationMap as MotivationMapData,
   MotivationDataPoint,
@@ -257,7 +256,6 @@ const TYPE_LABELS: Record<EditableEntityType, string> = {
   swimlane: "Swimlane",
   touchpoint: "Touchpoint",
   callout: "Callout",
-  insight: "Insight",
   motivation_point: "Data Point",
 };
 
@@ -330,7 +328,6 @@ export function EditDrawer() {
         {type === "swimlane" && <SwimlaneForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
         {type === "touchpoint" && <TouchpointForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
         {type === "callout" && <CalloutForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
-        {type === "insight" && <InsightForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
         {type === "motivation_point" && <MotivationPointForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
         {type === "stage_group" && <StageGroupForm key={id} id={id} bp={blueprint} dispatch={dispatch} isNew={isNew} parentId={editingEntity.parentId} onClose={close} />}
       </div>
@@ -743,7 +740,6 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
   }
 
   const save = () => {
-    if (!title.trim()) return;
     const resolvedPhaseIds = phaseIds.length > 0 ? phaseIds : undefined;
     if (isNew) {
       const newId = slugify(title) || id;
@@ -800,47 +796,10 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
           ))}
         </div>
       )}
-      <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
-      <SaveButton onSave={save} disabled={!title.trim()} />
-    </div>
-  );
-}
-
-// ── Insight ──
-function InsightForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) {
-  const existing = bp.insights.find((i) => i.id === id);
-  const [title, setTitle] = useState(existing?.title ?? "");
-  const [text, setText] = useState(existing?.text ?? "");
-  const [dataPoint, setDataPoint] = useState(existing?.dataPoint ?? "");
-  const [dataSource, setDataSource] = useState(existing?.dataSource ?? "");
-  const [quote, setQuote] = useState(existing?.quote ?? "");
-  const [stageId, setStageId] = useState(existing?.stageId ?? parentId ?? bp.journeyStages[0]?.id ?? "");
-
-  const save = () => {
-    if (!title.trim()) return;
-    if (isNew) {
-      const newId = slugify(title) || id;
-      dispatch({
-        type: "ADD_INSIGHT",
-        insight: { id: newId, stageId, title: title.trim(), text: text.trim(), dataPoint: dataPoint.trim() || undefined, dataSource: dataSource.trim() || undefined, quote: quote.trim() || undefined } as Insight,
-      });
-    } else {
-      dispatch({ type: "UPDATE_INSIGHT", id, changes: { title: title.trim(), text: text.trim(), stageId, dataPoint: dataPoint.trim() || undefined, dataSource: dataSource.trim() || undefined, quote: quote.trim() || undefined } });
-    }
-    onClose();
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Field label="Title"><TextInput value={title} onChange={setTitle} placeholder="Insight title" /></Field>
-      <Field label="Stage">
-        <SelectInput value={stageId} onChange={setStageId} options={bp.journeyStages.map((s) => ({ value: s.id, label: s.name }))} />
+      <Field label="Description">
+        <MarkdownEditor value={description} onChange={setDescription} placeholder="Supports **bold**, *italic*, and - bullet lists" />
       </Field>
-      <Field label="Text"><TextArea value={text} onChange={setText} placeholder="Insight text" /></Field>
-      <Field label="Data Point"><TextInput value={dataPoint} onChange={setDataPoint} placeholder="e.g. 73%" /></Field>
-      <Field label="Data Source"><TextInput value={dataSource} onChange={setDataSource} placeholder="e.g. GA4, Q1 2026" /></Field>
-      <Field label="Quote"><TextArea value={quote} onChange={setQuote} placeholder="Customer voice quote" rows={2} /></Field>
-      <SaveButton onSave={save} disabled={!title.trim()} />
+      <SaveButton onSave={save} disabled={false} />
     </div>
   );
 }
@@ -1083,6 +1042,70 @@ function StageGroupForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
         </label>
       )}
       <SaveButton onSave={save} disabled={!name.trim()} />
+    </div>
+  );
+}
+
+function MarkdownEditor({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  function wrap(before: string, after: string) {
+    const el = ref.current;
+    if (!el) return;
+    const { selectionStart: s, selectionEnd: e, value: v } = el;
+    const selected = v.slice(s, e);
+    const replacement = `${before}${selected || "text"}${after}`;
+    const next = v.slice(0, s) + replacement + v.slice(e);
+    onChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = s + before.length;
+      el.selectionEnd = s + before.length + (selected || "text").length;
+    });
+  }
+
+  function insertBullet() {
+    const el = ref.current;
+    if (!el) return;
+    const { selectionStart: s, value: v } = el;
+    const lineStart = v.lastIndexOf("\n", s - 1) + 1;
+    const line = v.slice(lineStart, s);
+    const prefix = line.startsWith("- ") ? "" : "- ";
+    const next = v.slice(0, lineStart) + prefix + v.slice(lineStart);
+    onChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = el.selectionEnd = s + prefix.length;
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1">
+        {[
+          { label: "B", title: "Bold", action: () => wrap("**", "**"), className: "font-bold" },
+          { label: "I", title: "Italic", action: () => wrap("*", "*"), className: "italic" },
+          { label: "•", title: "Bullet", action: insertBullet, className: "" },
+        ].map((btn) => (
+          <button
+            key={btn.title}
+            type="button"
+            title={btn.title}
+            onMouseDown={(e) => { e.preventDefault(); btn.action(); }}
+            className={`h-7 w-7 rounded border border-neutral-gray-200 bg-white text-[13px] text-brand-navy-1000 transition hover:bg-neutral-gray-100 ${btn.className}`}
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={5}
+        className="w-full rounded-md border border-neutral-gray-200 bg-white px-3 py-2 font-mono text-sm text-brand-navy-1000 outline-none transition focus:border-brand-cyan-500 focus:ring-2 focus:ring-brand-cyan-500/20"
+      />
     </div>
   );
 }

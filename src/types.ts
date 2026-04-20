@@ -8,7 +8,6 @@ export type {
   Touchpoint,
   CalloutType,
   Callout,
-  Insight,
   MotivationMap,
   MotivationMapMeta,
   Blueprint,

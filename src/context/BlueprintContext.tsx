@@ -7,7 +7,6 @@ import type {
   Swimlane,
   Touchpoint,
   Callout,
-  Insight,
   MotivationMap,
   StageGroup,
 } from "../types/blueprint";
@@ -19,7 +18,7 @@ import { createEmptyBlueprint } from "../utils/dataUtils";
 // ---------------------------------------------------------------------------
 
 /** Entity types that can be edited in the drawer. */
-export type EditableEntityType = "section" | "stage" | "stage_group" | "phase" | "swimlane" | "touchpoint" | "callout" | "insight" | "motivation_point";
+export type EditableEntityType = "section" | "stage" | "stage_group" | "phase" | "swimlane" | "touchpoint" | "callout" | "motivation_point";
 
 /** Describes the entity currently open in the edit drawer. */
 export interface EditingEntity {
@@ -91,10 +90,6 @@ type Action =
   | { type: "ADD_CALLOUT"; callout: Callout }
   | { type: "UPDATE_CALLOUT"; id: string; changes: Partial<Omit<Callout, "id">> }
   | { type: "DELETE_CALLOUT"; id: string }
-  // CRUD — insights
-  | { type: "ADD_INSIGHT"; insight: Insight }
-  | { type: "UPDATE_INSIGHT"; id: string; changes: Partial<Omit<Insight, "id">> }
-  | { type: "DELETE_INSIGHT"; id: string }
   // CRUD — motivation maps
   | { type: "ADD_MOTIVATION_MAP"; motivationMap: MotivationMap }
   | { type: "UPDATE_MOTIVATION_MAP"; id: string; changes: Partial<Omit<MotivationMap, "id">> }
@@ -146,13 +141,11 @@ function ensureBp(bp: Blueprint | null): Blueprint {
 function reducer(state: BlueprintState, action: Action): BlueprintState {
   switch (action.type) {
     case "LOAD_BLUEPRINT": {
-      const groupIds = [...new Set(action.blueprint.phases.map((p) => p.groupId ?? p.id))];
       return {
         ...initialState,
         blueprint: action.blueprint,
         fileName: action.fileName,
         touchpointMedia: action.touchpointMedia ?? {},
-        collapsedPhaseGroups: new Set(groupIds),
       };
     }
 
@@ -265,20 +258,6 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
     case "DELETE_CALLOUT": {
       const bp = ensureBp(state.blueprint);
       return { ...state, blueprint: { ...bp, callouts: deleteFromList(bp.callouts, action.id) } };
-    }
-
-    // --- Insights ---
-    case "ADD_INSIGHT": {
-      const bp = ensureBp(state.blueprint);
-      return { ...state, blueprint: { ...bp, insights: [...bp.insights, action.insight] } };
-    }
-    case "UPDATE_INSIGHT": {
-      const bp = ensureBp(state.blueprint);
-      return { ...state, blueprint: { ...bp, insights: updateList(bp.insights, action.id, action.changes) } };
-    }
-    case "DELETE_INSIGHT": {
-      const bp = ensureBp(state.blueprint);
-      return { ...state, blueprint: { ...bp, insights: deleteFromList(bp.insights, action.id) } };
     }
 
     // --- Motivation Maps ---

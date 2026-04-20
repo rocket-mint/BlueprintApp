@@ -2,15 +2,14 @@
 //
 // Hierarchy: Blueprint > Section > JourneyStage > Phase > Swimlane > Touchpoint
 //
-// Excel structure is 8 sheets:
+// Excel structure is 7 sheets:
 //   1. Sections         -> Section[]
 //   2. Journey Stages   -> JourneyStage[]
 //   3. Phases           -> Phase[]
 //   4. Swimlanes        -> Swimlane[]
 //   5. Touchpoints      -> Touchpoint[]
 //   6. Callouts         -> Callout[]
-//   7. Insights         -> Insight[]
-//   8. Motivation Maps  -> MotivationMap[]
+//   7. Motivation Maps  -> MotivationMap[]
 
 // ---------------------------------------------------------------------------
 // Section — top-level grouping of stages (e.g. "Pre-Purchase", "Onboarding")
@@ -145,19 +144,6 @@ export interface Callout {
 }
 
 // ---------------------------------------------------------------------------
-// Insight — research finding / data point per stage
-// ---------------------------------------------------------------------------
-export interface Insight {
-  id: string;
-  stageId: string;
-  title: string;
-  text: string;
-  dataPoint?: string;
-  dataSource?: string;
-  quote?: string;
-}
-
-// ---------------------------------------------------------------------------
 // MotivationDataPoint — a single inflection point on the motivation curve
 // ---------------------------------------------------------------------------
 export interface MotivationDataPoint {
@@ -195,7 +181,6 @@ export interface Blueprint {
   swimlanes: Swimlane[];
   touchpoints: Touchpoint[];
   callouts: Callout[];
-  insights: Insight[];
   motivationMaps: MotivationMap[];
 }
 

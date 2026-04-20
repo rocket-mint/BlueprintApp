@@ -8,7 +8,6 @@ import type {
   Swimlane,
   Touchpoint,
   Callout,
-  Insight,
   MotivationMap,
 } from "../types/blueprint";
 
@@ -73,14 +72,6 @@ export function validateCallout(c: Callout, stageIds: Set<string>): ValidationEr
   return errors;
 }
 
-export function validateInsight(i: Insight, stageIds: Set<string>): ValidationError[] {
-  const errors: ValidationError[] = [];
-  if (!requiredStr(i.id)) errors.push({ entity: "Insight", id: i.id, field: "id", message: "ID is required" });
-  if (!requiredStr(i.title)) errors.push({ entity: "Insight", id: i.id, field: "title", message: "Title is required" });
-  if (!stageIds.has(i.stageId)) errors.push({ entity: "Insight", id: i.id, field: "stageId", message: `Unknown stage: ${i.stageId}` });
-  return errors;
-}
-
 export function validateMotivationMap(m: MotivationMap, swimlaneIds: Set<string>): ValidationError[] {
   const errors: ValidationError[] = [];
   if (!requiredStr(m.id)) errors.push({ entity: "MotivationMap", id: m.id, field: "id", message: "ID is required" });
@@ -102,7 +93,6 @@ export function validateBlueprint(bp: Blueprint): ValidationError[] {
   for (const s of bp.swimlanes) errors.push(...validateSwimlane(s));
   for (const t of bp.touchpoints) errors.push(...validateTouchpoint(t, stageIds, swimlaneIds));
   for (const c of bp.callouts) errors.push(...validateCallout(c, stageIds));
-  for (const i of bp.insights) errors.push(...validateInsight(i, stageIds));
   for (const m of bp.motivationMaps) errors.push(...validateMotivationMap(m, swimlaneIds));
 
   return errors;

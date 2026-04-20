@@ -78,7 +78,7 @@ export function FileUpload({ onLoaded, onError }: Props) {
           Drag & drop an .xlsx file, or click to browse
         </p>
         <p className="text-xs text-neutral-gray-500">
-          Sheets: Sections · Journey Stages · Phases · Swimlanes · Touchpoints · Callouts · Insights · Motivation Maps
+          Sheets: Sections · Journey Stages · Phases · Swimlanes · Touchpoints · Callouts · Motivation Maps
         </p>
       </div>
     </div>

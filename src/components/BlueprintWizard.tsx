@@ -372,7 +372,6 @@ export function BlueprintWizard({ onComplete, onCancel }: Props) {
       swimlanes: bpSwimlanes,
       touchpoints: [],
       callouts: [],
-      insights: [],
       motivationMaps: [],
     };
 

@@ -8,7 +8,6 @@ import type {
   Swimlane,
   Touchpoint,
   Callout,
-  Insight,
   MotivationMap,
 } from "../types/blueprint";
 
@@ -61,11 +60,6 @@ export function calloutsForStage(
   return bp.callouts
     .filter((c) => c.stageId === stageId && (!swimlaneId || c.swimlaneId === swimlaneId))
     .sort((a, b) => a.order - b.order);
-}
-
-/** Get insights for a stage. */
-export function insightsForStage(bp: Blueprint, stageId: string): Insight[] {
-  return bp.insights.filter((i) => i.stageId === stageId);
 }
 
 /** Get motivation map for a swimlane. */
@@ -129,7 +123,6 @@ export function createEmptyBlueprint(): Blueprint {
     swimlanes: [],
     touchpoints: [],
     callouts: [],
-    insights: [],
     motivationMaps: [],
   };
 }

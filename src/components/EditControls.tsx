@@ -38,7 +38,6 @@ const TYPE_LABELS: Record<EditableEntityType, string> = {
   swimlane: "Swimlane",
   touchpoint: "Touchpoint",
   callout: "Callout",
-  insight: "Insight",
   motivation_point: "Data Point",
 };
 

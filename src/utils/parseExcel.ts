@@ -1,4 +1,4 @@
-// Excel parser for the 8-sheet blueprint structure.
+// Excel parser for the 7-sheet blueprint structure.
 //
 // Sheets:
 //   1. Sections         -> Section[]
@@ -7,8 +7,7 @@
 //   4. Swimlanes        -> Swimlane[]
 //   5. Touchpoints      -> Touchpoint[]
 //   6. Callouts         -> Callout[]
-//   7. Insights         -> Insight[]
-//   8. Motivation Maps  -> MotivationMap[]
+//   7. Motivation Maps  -> MotivationMap[]
 
 import ExcelJS from "exceljs";
 import type {
@@ -19,7 +18,6 @@ import type {
   Swimlane,
   Touchpoint,
   Callout,
-  Insight,
   MotivationMap,
   MotivationDataPoint,
   SwimlaneType,
@@ -201,7 +199,6 @@ export async function parseExcel(file: File): Promise<Blueprint> {
   const swimlanesRaw = readSheet(wb, ["Swimlanes", "Swim Lanes"]) ?? [];
   const touchpointsRaw = readSheet(wb, ["Touchpoints", "Touchpoint"]) ?? [];
   const calloutsRaw = readSheet(wb, ["Callouts", "Callout"]) ?? [];
-  const insightsRaw = readSheet(wb, ["Insights", "Insight"]) ?? [];
   const motivationMapsRaw = readSheet(wb, ["Motivation Maps", "Motivation Map"]) ?? [];
 
   if (stagesRaw.length === 0) throw new Error("Missing or empty 'Journey Stages' sheet");
@@ -363,23 +360,6 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     .filter((c) => c.id && c.stageId && c.title)
     .sort((a, b) => a.order - b.order);
 
-  // ---- Insights ----
-  const insights: Insight[] = insightsRaw
-    .map((r, i) => {
-      const explicitId = str(r["Insight ID"] ?? r["id"]);
-      const id = explicitId || `insight_${i + 1}`;
-      return {
-        id,
-        stageId: resolveStage(r["Journey Stage"] ?? r["Stage"]),
-        title: str(r["Insight Title"] ?? r["Title"]),
-        text: str(r["Insight Text"] ?? r["Text"]),
-        dataPoint: str(r["Data Point"]) || undefined,
-        dataSource: str(r["Data Source"]) || undefined,
-        quote: str(r["Quote/Customer Voice"] ?? r["Quote"]) || undefined,
-      };
-    })
-    .filter((ins) => ins.id && ins.stageId && ins.title);
-
   // ---- Fallback: motivation scores from Stages sheet ----
   const stageScoresFromStagesSheet: Record<string, MotivationDataPoint[]> = {};
   for (let i = 0; i < stagesRaw.length; i++) {
@@ -446,7 +426,6 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     swimlanes,
     touchpoints,
     callouts,
-    insights,
     motivationMaps,
   };
 }
