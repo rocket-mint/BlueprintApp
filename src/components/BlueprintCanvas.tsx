@@ -179,7 +179,6 @@ interface ReorderUpdate {
 // ---------------------------------------------------------------------------
 interface Props {
   blueprint: Blueprint;
-  stages: JourneyStage[];
   touchpointMedia: Record<string, Media>;
   collapsedSwimlanes: Set<string>;
   collapsedSections: Set<string>;
@@ -1299,7 +1298,6 @@ function MetaTile({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------
 export function BlueprintCanvas({
   blueprint,
-  stages,
   touchpointMedia,
   collapsedSwimlanes,
   collapsedSections,

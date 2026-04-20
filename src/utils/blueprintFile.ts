@@ -64,7 +64,11 @@ export async function saveBlueprintFile(
     ),
   );
 
-  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+  // Generate as Uint8Array so we can set the MIME type explicitly.
+  // Using application/octet-stream (not application/zip) prevents Safari on
+  // macOS from auto-extracting the archive via "Open safe files after downloading".
+  const bytes    = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
+  const blob     = new Blob([bytes], { type: "application/octet-stream" });
   const safeName = `${sanitizeName(fileName)}.bp`;
 
   // Use native Save As dialog when available (Chrome/Edge 86+), fall back to blob download.
@@ -103,7 +107,8 @@ export interface LoadedBlueprintFile {
  * Throws a descriptive Error on any failure so the caller can show it to the user.
  */
 export async function loadBlueprintFile(file: File): Promise<LoadedBlueprintFile> {
-  if (!/\.bp$/i.test(file.name)) {
+  // Accept .bp and .bp.zip (macOS may append .zip to unknown archive formats)
+  if (!/\.bp(\.zip)?$/i.test(file.name)) {
     throw new Error("Please select a .bp file.");
   }
 

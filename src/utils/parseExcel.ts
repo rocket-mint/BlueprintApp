@@ -127,13 +127,16 @@ function parseMotivationScore(v: unknown): number | undefined {
   return undefined;
 }
 
+type RawScorePoint = { score: number; title?: string; description?: string };
+
 /**
- * Parse a cell value into MotivationDataPoint[].
+ * Parse a cell value into raw score points (no x yet — x is assigned when
+ * distributing points across the stage axis).
  * Supports two formats:
  *   Plain:  "0.30, 0.45"
  *   Rich:   "0.30|Title|Description, 0.45|Title|Desc"
  */
-function parseMotivationDataPoints(v: unknown): MotivationDataPoint[] {
+function parseRawScorePoints(v: unknown): RawScorePoint[] {
   if (v == null || v === "") return [];
   if (typeof v === "number" && Number.isFinite(v)) {
     const n = parseMotivationScore(v);
@@ -143,7 +146,7 @@ function parseMotivationDataPoints(v: unknown): MotivationDataPoint[] {
   if (!raw) return [];
 
   if (raw.includes("|")) {
-    const out: MotivationDataPoint[] = [];
+    const out: RawScorePoint[] = [];
     for (const part of raw.split(/[,;]/)) {
       const segments = part.split("|").map((s) => s.trim());
       const score = parseMotivationScore(segments[0]);
@@ -154,12 +157,36 @@ function parseMotivationDataPoints(v: unknown): MotivationDataPoint[] {
     return out;
   }
 
-  const out: MotivationDataPoint[] = [];
+  const out: RawScorePoint[] = [];
   for (const part of raw.split(/[,;]/)) {
     const n = parseMotivationScore(part.trim());
     if (n !== undefined) out.push({ score: n });
   }
   return out;
+}
+
+/** Distribute per-stage raw score points into a flat MotivationDataPoint[] with x positions. */
+function distributeToPoints(
+  stagePts: Array<{ stageIdx: number; pts: RawScorePoint[] }>,
+  numStages: number,
+): MotivationDataPoint[] {
+  const points: MotivationDataPoint[] = [];
+  for (const { stageIdx, pts } of stagePts) {
+    const xCenter = numStages <= 1 ? 0.5 : stageIdx / (numStages - 1);
+    const segW    = numStages <= 1 ? 1   : 1 / (numStages - 1);
+    pts.forEach((pt, ptIdx) => {
+      let x: number;
+      if (pts.length === 1) {
+        x = xCenter;
+      } else {
+        const spread = segW * 0.6;
+        x = xCenter - spread / 2 + (ptIdx / (pts.length - 1)) * spread;
+      }
+      points.push({ score: pt.score, x: Math.max(0, Math.min(1, x)), title: pt.title, description: pt.description });
+    });
+  }
+  points.sort((a, b) => a.x - b.x);
+  return points;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,15 +388,18 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     .sort((a, b) => a.order - b.order);
 
   // ---- Fallback: motivation scores from Stages sheet ----
-  const stageScoresFromStagesSheet: Record<string, MotivationDataPoint[]> = {};
+  const fallbackStagePts: Array<{ stageIdx: number; pts: RawScorePoint[] }> = [];
   for (let i = 0; i < stagesRaw.length; i++) {
     const r = stagesRaw[i];
     const stage = journeyStages[i];
     if (!stage) continue;
     const raw = r["Motivation Score"] ?? r["Motivation Scores"] ?? r["Motivation"] ?? r["motivation"];
-    const points = parseMotivationDataPoints(raw);
-    if (points.length > 0) stageScoresFromStagesSheet[stage.id] = points;
+    const pts = parseRawScorePoints(raw);
+    if (pts.length > 0) fallbackStagePts.push({ stageIdx: i, pts });
   }
+  const fallbackPoints = fallbackStagePts.length > 0
+    ? distributeToPoints(fallbackStagePts, journeyStages.length)
+    : [];
 
   // ---- Motivation Maps ----
   const motivationMaps: MotivationMap[] = motivationMapsRaw
@@ -378,31 +408,36 @@ export async function parseExcel(file: File): Promise<Blueprint> {
       const id = explicitId || `mm_${i + 1}`;
       const slId = resolveSwimlane(r["Swimlane ID"] ?? r["Swimlane"]);
 
-      const stageScores: Record<string, MotivationDataPoint[]> = {};
-      for (const stage of journeyStages) {
+      // Collect per-stage raw score points
+      const stagePts: Array<{ stageIdx: number; pts: RawScorePoint[] }> = [];
+      for (let si = 0; si < journeyStages.length; si++) {
+        const stage = journeyStages[si];
         const colVal = r[stage.id] ?? r[stage.name];
-        if (colVal != null && colVal !== "") stageScores[stage.id] = parseMotivationDataPoints(colVal);
-      }
-
-      if (Object.keys(stageScores).length === 0) {
-        const rawScores = str(r["Scores"] ?? r["Motivation Scores"] ?? r["Motivation Score"]);
-        if (rawScores) {
-          const points = parseMotivationDataPoints(rawScores);
-          if (points.length > 0) {
-            journeyStages.forEach((stage, idx) => {
-              if (idx < points.length) stageScores[stage.id] = [points[idx]];
-            });
-          }
+        if (colVal != null && colVal !== "") {
+          const pts = parseRawScorePoints(colVal);
+          if (pts.length > 0) stagePts.push({ stageIdx: si, pts });
         }
       }
 
-      if (Object.keys(stageScores).length === 0) Object.assign(stageScores, stageScoresFromStagesSheet);
+      // Fallback: generic "Scores" column — one score per stage in order
+      if (stagePts.length === 0) {
+        const rawScores = str(r["Scores"] ?? r["Motivation Scores"] ?? r["Motivation Score"]);
+        if (rawScores) {
+          parseRawScorePoints(rawScores).forEach((pt, idx) => {
+            if (idx < journeyStages.length) stagePts.push({ stageIdx: idx, pts: [pt] });
+          });
+        }
+      }
+
+      const points: MotivationDataPoint[] = stagePts.length > 0
+        ? distributeToPoints(stagePts, journeyStages.length)
+        : fallbackPoints;
 
       return {
         id,
         swimlaneId: slId,
         title: str(r["Map Title"] ?? r["Title"]) || undefined,
-        stageScores,
+        points,
         drivers: str(r["Key Drivers"] ?? r["Drivers"]) || undefined,
         triggers: str(r["Emotional Triggers"] ?? r["Triggers"]) || undefined,
         insights: str(r["Key Insights"] ?? r["Insights"]) || undefined,
@@ -411,10 +446,10 @@ export async function parseExcel(file: File): Promise<Blueprint> {
     })
     .filter((m) => m.swimlaneId);
 
-  if (motivationMaps.length === 0 && Object.keys(stageScoresFromStagesSheet).length > 0) {
+  if (motivationMaps.length === 0 && fallbackPoints.length > 0) {
     const mmSwimlane = swimlanes.find((s) => s.type === "motivation_map");
     if (mmSwimlane) {
-      motivationMaps.push({ id: "mm_auto", swimlaneId: mmSwimlane.id, title: "Motivation Map", stageScores: { ...stageScoresFromStagesSheet } });
+      motivationMaps.push({ id: "mm_auto", swimlaneId: mmSwimlane.id, title: "Motivation Map", points: fallbackPoints });
     }
   }
 

@@ -44,15 +44,113 @@ function downloadFileName(sourceName: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-render motivation map SVG at export time (TypeScript side, no DOM).
+// Each dot gets data-mm-* attributes so the viewer script can show tooltips.
+// ---------------------------------------------------------------------------
+function buildMmSvg(
+  points: Array<{ x: number; score: number; title?: string; description?: string }>,
+  gradientId: string,
+): string {
+  const VW = 1200, VH = 200;
+  const MLEFT = 8, MRIGHT = 16, MTOP = 20, MBOTTOM = 20;
+  const INNER_H = VH - MTOP - MBOTTOM;
+  const INNER_W = VW - MLEFT - MRIGHT;
+  const PURPLE = "#8073ff";
+  const DOT_R = 6;
+
+  const clamp = (n: number) => Math.max(0, Math.min(1, n));
+  const levels = [1.0, 0.5, 0.0]; // High, Medium, Low
+
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  const coords: Array<[number, number]> = sorted.map((p) => [
+    MLEFT + clamp(p.x) * INNER_W,
+    MTOP + (1 - clamp(p.score)) * INNER_H,
+  ]);
+
+  function catmullRomPath(pts: Array<[number, number]>): string {
+    if (pts.length === 0) return "";
+    if (pts.length === 1) return `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] ?? pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2] ?? p2;
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+      const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+      const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)},${c2x.toFixed(1)} ${c2y.toFixed(1)},${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+    }
+    return d;
+  }
+
+  const linePath = catmullRomPath(coords);
+  const baseY = MTOP + INNER_H;
+  const areaPath =
+    coords.length >= 2
+      ? `${linePath} L ${coords[coords.length - 1][0].toFixed(1)} ${baseY} L ${coords[0][0].toFixed(1)} ${baseY} Z`
+      : "";
+
+  const gridlines = levels
+    .map((v) => {
+      const y = (MTOP + (1 - v) * INNER_H).toFixed(1);
+      return `<line x1="${MLEFT}" x2="${VW - MRIGHT}" y1="${y}" y2="${y}" stroke="#e5e7eb" stroke-dasharray="4 4" stroke-width="1"/>`;
+    })
+    .join("");
+
+  const dots = sorted
+    .map((pt, i) => {
+      const cx = coords[i][0].toFixed(1);
+      const cy = coords[i][1].toFixed(1);
+      const parts = [
+        `cx="${cx}" cy="${cy}" r="${DOT_R}"`,
+        `fill="${PURPLE}" stroke="white" stroke-width="2"`,
+        `data-mm-score="${Math.round(clamp(pt.score) * 100)}"`,
+        pt.title ? `data-mm-title="${escapeHtml(pt.title)}"` : "",
+        pt.description ? `data-mm-desc="${escapeHtml(pt.description)}"` : "",
+        `style="cursor:default"`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `<circle ${parts}/>`;
+    })
+    .join("");
+
+  return (
+    `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" ` +
+    `style="display:block;width:100%;height:${VH}px" role="img" aria-label="Motivation curve">` +
+    `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0%" stop-color="${PURPLE}" stop-opacity="0.3"/>` +
+    `<stop offset="100%" stop-color="${PURPLE}" stop-opacity="0.03"/>` +
+    `</linearGradient></defs>` +
+    gridlines +
+    (areaPath ? `<path d="${areaPath}" fill="url(#${gradientId})"/>` : "") +
+    (linePath
+      ? `<path d="${linePath}" fill="none" stroke="${PURPLE}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`
+      : "") +
+    dots +
+    `</svg>`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Vanilla viewer. Uses string concatenation (no ${} template literals) so
 // it can be embedded inside the TypeScript template literal below without
 // conflicting with TS interpolation.
 // ---------------------------------------------------------------------------
 const VIEWER_SCRIPT = `
 (function () {
-  var DATA  = window.__BLUEPRINT_DATA__;
-  var MEDIA = window.__BLUEPRINT_MEDIA__ || {};
-  var TITLE = window.__BLUEPRINT_TITLE__ || "Service Blueprint";
+  var DATA    = window.__BLUEPRINT_DATA__;
+  var MEDIA   = window.__BLUEPRINT_MEDIA__   || {};
+  var TITLE   = window.__BLUEPRINT_TITLE__   || "Service Blueprint";
+  var MM_SVGS = window.__BLUEPRINT_MM_SVGS__ || {};
+
+  if (!DATA || !DATA.sections) {
+    document.getElementById("root").innerHTML =
+      '<div style="padding:40px;font-family:sans-serif;color:#6b7280">Blueprint data missing.</div>';
+    return;
+  }
 
   // Layout constants — mirror src/lib/blueprintLayout.ts + BlueprintCanvas
   var LABEL_COL_W   = 150;
@@ -86,6 +184,38 @@ const VIEWER_SCRIPT = `
     return String(s).replace(/[&<>"']/g, function (c) {
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
     });
+  }
+
+  // Mirror of CalloutBadge.tsx renderMarkdown — handles bullets, bold, italic, newlines.
+  function renderMarkdown(text) {
+    if (!text) return "";
+    var lines = String(text).split("\\n");
+    var html = "";
+    var inList = false;
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      var isBullet = line.slice(0, 2) === "- ";
+      var content = isBullet ? line.slice(2) : line;
+
+      // Inline bold / italic
+      var formatted = content
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+      if (isBullet) {
+        if (!inList) { html += '<ul style="margin:2px 0 2px 12px;padding:0;list-style:disc">'; inList = true; }
+        html += '<li style="margin:1px 0">' + formatted + '</li>';
+      } else {
+        if (inList) { html += '</ul>'; inList = false; }
+        if (line === "") {
+          html += '<br>';
+        } else {
+          html += '<p style="margin:1px 0;line-height:1.4">' + formatted + '</p>';
+        }
+      }
+    }
+    if (inList) html += '</ul>';
+    return html;
   }
 
   function sortBy(arr, key) {
@@ -149,13 +279,12 @@ const VIEWER_SCRIPT = `
   function renderCalloutBadge(c) {
     var st = CALLOUT_STYLES[c.type] || CALLOUT_STYLES.note;
     return ''
-      + '<div class="flex w-full items-start gap-1.5 rounded-md border p-1.5 ' + st.bg + ' ' + st.border + '"'
-      + (c.description ? ' title="' + esc(c.description) + '"' : '') + '>'
-      +   '<span class="shrink-0 text-[11px] leading-none ' + st.icon + '">' + st.sym + '</span>'
-      +   '<div class="min-w-0 flex-1 break-words">'
-      +     (c.label ? '<div class="text-[11px] font-semibold uppercase tracking-wider ' + st.text + '">' + esc(c.label) + '</div>' : '')
-      +     (c.title ? '<div class="text-[12px] font-medium leading-tight text-brand-navy-900">' + esc(c.title) + '</div>' : '')
-      +     (c.description ? '<p class="mt-0.5 text-[11px] leading-snug text-neutral-gray-600">' + esc(c.description) + '</p>' : '')
+      + '<div style="display:flex;width:100%;align-items:flex-start;gap:6px;border-radius:6px;border:1px solid;padding:6px;box-sizing:border-box" class="' + st.bg + ' ' + st.border + '">'
+      +   '<span style="flex-shrink:0;font-size:11px;line-height:1;margin-top:1px" class="' + st.icon + '">' + st.sym + '</span>'
+      +   '<div style="min-width:0;flex:1;word-break:break-word">'
+      +     (c.label ? '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px" class="' + st.text + '">' + esc(c.label) + '</div>' : '')
+      +     (c.title ? '<div style="font-size:12px;font-weight:500;line-height:1.3;margin-bottom:2px;color:#0f1724">' + esc(c.title) + '</div>' : '')
+      +     (c.description ? '<div style="font-size:11px;color:#4b5563">' + renderMarkdown(c.description) + '</div>' : '')
       +   '</div>'
       + '</div>';
   }
@@ -460,98 +589,46 @@ const VIEWER_SCRIPT = `
     return html;
   }
 
-  // ── Motivation map ──
-  var MM_VW = 1200, MM_VH = 200;
-  var MM_MTOP = 20, MM_MRIGHT = 16, MM_MBOTTOM = 20, MM_MLEFT = 8;
-  var MM_INNER_H = MM_VH - MM_MTOP - MM_MBOTTOM;
-  var MM_LEVELS = [
-    { label: "High motivation / pressure", value: 1.0  },
-    { label: "Strong intent / commitment", value: 0.67 },
-    { label: "Neutral",                    value: 0.33 },
-    { label: "Low motivation / passive",   value: 0.0  }
-  ];
-
-  function clamp01(n) { return Math.max(0, Math.min(1, n)); }
-  function gridlineTopPct(v) { return ((MM_MTOP + (1 - v) * MM_INNER_H) / MM_VH) * 100; }
-
-  function catmullRomPath(pts) {
-    if (pts.length === 0) return "";
-    if (pts.length === 1) return "M " + pts[0][0] + " " + pts[0][1];
-    var d = "M " + pts[0][0].toFixed(2) + " " + pts[0][1].toFixed(2);
-    for (var i = 0; i < pts.length - 1; i++) {
-      var p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-      var c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
-      var c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
-      d += " C " + c1x.toFixed(2) + " " + c1y.toFixed(2) + "," + c2x.toFixed(2) + " " + c2y.toFixed(2) + "," + p2[0].toFixed(2) + " " + p2[1].toFixed(2);
-    }
-    return d;
-  }
-
+  // ── Motivation map (uses pre-rendered SVGs from window.__BLUEPRINT_MM_SVGS__) ──
   function renderMotivationSwimlane(sl, stages) {
-    var meta = mmBySwimlane[sl.id];
-    // New flat points model: [{x: 0-1, score: 0-1, title?, description?}]
-    var rawPoints = (meta && meta.points) || [];
-    rawPoints = rawPoints.slice().sort(function (a, b) { return a.x - b.x; });
-
-    var VW = MM_VW, VH = MM_VH;
-    var innerW = VW - MM_MLEFT - MM_MRIGHT;
-    var baseY  = MM_MTOP + MM_INNER_H;
-
-    var pts2 = rawPoints.map(function (pt) {
-      return [
-        MM_MLEFT + clamp01(pt.x) * innerW,
-        MM_MTOP + (1 - clamp01(pt.score)) * MM_INNER_H
-      ];
-    });
-
-    var linePath  = catmullRomPath(pts2);
-    var areaPath  = pts2.length >= 2
-      ? linePath + " L " + pts2[pts2.length - 1][0].toFixed(2) + " " + baseY + " L " + pts2[0][0].toFixed(2) + " " + baseY + " Z"
-      : "";
-    var gid = "mm-" + sl.id.replace(/[^a-z0-9]/gi, "_");
-
-    var grid = "";
-    for (var li = 0; li < MM_LEVELS.length; li++) {
-      var ly = MM_MTOP + (1 - MM_LEVELS[li].value) * MM_INNER_H;
-      grid += '<line x1="' + MM_MLEFT + '" x2="' + (VW - MM_MRIGHT) + '" y1="' + ly + '" y2="' + ly + '" stroke="#c1c7d0" stroke-dasharray="4 4" stroke-width="1"/>';
-    }
-    var dots = pts2.map(function (p) {
-      return '<circle cx="' + p[0].toFixed(2) + '" cy="' + p[1].toFixed(2) + '" r="3" fill="#8073ff"/>';
-    }).join("");
-
-    var svgHtml = ''
-      + '<div class="overflow-hidden rounded-xl border border-neutral-gray-200 bg-brand-blue-50">'
-      + '<svg viewBox="0 0 ' + VW + ' ' + VH + '" preserveAspectRatio="none" style="display:block;width:100%;height:' + VH + 'px" role="img" aria-label="Motivation curve">'
-      + '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">'
-      + '<stop offset="0%" stop-color="#8073ff" stop-opacity="0.45"/><stop offset="100%" stop-color="#8073ff" stop-opacity="0.04"/>'
-      + '</linearGradient></defs>'
-      + grid
-      + (areaPath ? '<path d="' + areaPath + '" fill="url(#' + gid + ')"/>' : "")
-      + '<path d="' + linePath + '" fill="none" stroke="#8073ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
-      + dots
-      + '</svg></div>';
-
-    // Y-axis labels
-    var yLabels = "";
-    for (var li2 = 0; li2 < MM_LEVELS.length; li2++) {
-      var top = gridlineTopPct(MM_LEVELS[li2].value).toFixed(2);
-      yLabels += '<div class="pointer-events-none absolute right-2 -translate-y-1/2 text-right text-[10px] font-medium leading-tight text-brand-navy-900" style="top:' + top + '%;max-width:calc(100% - 8px)">'
-        + esc(MM_LEVELS[li2].label) + '</div>';
-    }
-
+    var meta  = mmBySwimlane[sl.id];
     var title = (meta && meta.title) || sl.name;
-    var chartLabelCell = '<div class="relative pr-2 pt-3">'
-      + '<h3 class="text-right text-[14px] font-bold leading-tight text-brand-navy-1000">' + esc(title) + '</h3>'
+    var preSvg = MM_SVGS[sl.id] || "";
+
+    // Y-axis labels live in the label column (not inside the SVG) so they
+    // never stretch with preserveAspectRatio="none".
+    // Values mirror React MotivationMap: High=10%, Medium=50%, Low=90%
+    var yLevels = [
+      { label: "High",   pct: 10 },
+      { label: "Medium", pct: 50 },
+      { label: "Low",    pct: 90 }
+    ];
+    var yLabels = "";
+    for (var li = 0; li < yLevels.length; li++) {
+      yLabels += '<div style="position:absolute;right:8px;top:' + yLevels[li].pct + '%;'
+        + 'transform:translateY(-50%);font-size:10px;font-weight:500;text-align:right;'
+        + 'line-height:1.2;color:#0f1724;pointer-events:none;max-width:calc(100% - 8px)">'
+        + esc(yLevels[li].label) + '</div>';
+    }
+
+    var chartLabelCell = '<div style="position:relative;padding-right:8px;padding-top:12px">'
+      + '<h3 style="text-align:right;font-size:14px;font-weight:700;line-height:1.25;color:#0f1724;margin:0 0 4px">' + esc(title) + '</h3>'
       + yLabels + '</div>';
-    var chartContentCell = '<div style="grid-column:span ' + stages.length + '" class="min-w-0 pt-3">' + svgHtml + '</div>';
+
+    var chartContentCell = '<div style="grid-column:span ' + stages.length + ';min-width:0;padding-top:12px">'
+      + '<div style="overflow:hidden;border-radius:12px;border:1px solid #e5e7eb;background:#eff6ff">'
+      + (preSvg || '<div style="height:200px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#9ca3af">No data</div>')
+      + '</div></div>';
 
     var metaRow = "";
     if (meta && (meta.drivers || meta.triggers || meta.insights)) {
       var tiles = "";
-      if (meta.drivers)  tiles += '<div class="rounded-lg border border-neutral-gray-200 bg-neutral-gray-50 p-2.5"><div class="text-[9px] font-semibold uppercase tracking-wider text-brand-cyan-500">Key drivers</div><p class="mt-0.5 text-[11px] leading-snug text-neutral-gray-700">' + esc(meta.drivers) + '</p></div>';
-      if (meta.triggers) tiles += '<div class="rounded-lg border border-neutral-gray-200 bg-neutral-gray-50 p-2.5"><div class="text-[9px] font-semibold uppercase tracking-wider text-brand-cyan-500">Emotional triggers</div><p class="mt-0.5 text-[11px] leading-snug text-neutral-gray-700">' + esc(meta.triggers) + '</p></div>';
-      if (meta.insights) tiles += '<div class="rounded-lg border border-neutral-gray-200 bg-neutral-gray-50 p-2.5"><div class="text-[9px] font-semibold uppercase tracking-wider text-brand-cyan-500">Key insights</div><p class="mt-0.5 text-[11px] leading-snug text-neutral-gray-700">' + esc(meta.insights) + '</p></div>';
-      metaRow = '<div style="display:contents"><div></div><div style="grid-column:span ' + stages.length + '" class="grid grid-cols-1 gap-2 sm:grid-cols-3">' + tiles + '</div></div>';
+      if (meta.drivers)  tiles += '<div style="border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;padding:10px"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#00b0ca">Key drivers</div><p style="margin:2px 0 0;font-size:11px;line-height:1.5;color:#374151">' + esc(meta.drivers) + '</p></div>';
+      if (meta.triggers) tiles += '<div style="border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;padding:10px"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#00b0ca">Emotional triggers</div><p style="margin:2px 0 0;font-size:11px;line-height:1.5;color:#374151">' + esc(meta.triggers) + '</p></div>';
+      if (meta.insights) tiles += '<div style="border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;padding:10px"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#00b0ca">Key insights</div><p style="margin:2px 0 0;font-size:11px;line-height:1.5;color:#374151">' + esc(meta.insights) + '</p></div>';
+      metaRow = '<div style="display:contents"><div></div>'
+        + '<div style="grid-column:span ' + stages.length + ';display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:8px">'
+        + tiles + '</div></div>';
     }
 
     return '<div style="display:contents">' + chartLabelCell + chartContentCell + '</div>' + metaRow;
@@ -803,7 +880,58 @@ const VIEWER_SCRIPT = `
     document.addEventListener("pointercancel", endDrag);
   })();
 
-  render();
+  // ── Motivation map dot tooltips ──
+  (function () {
+    var tip = null;
+    function ensureTip() {
+      if (!tip) {
+        tip = document.createElement("div");
+        tip.style.cssText = "display:none;position:fixed;z-index:200;pointer-events:none;"
+          + "min-width:120px;border-radius:8px;border:2px solid #8073ff;background:#ffffff;"
+          + "padding:8px 12px;box-shadow:0 4px 16px rgba(0,0,0,0.12)";
+        document.body.appendChild(tip);
+      }
+      return tip;
+    }
+    document.addEventListener("mouseover", function (e) {
+      var el = e.target;
+      if (!el || !el.getAttribute) return;
+      var score = el.getAttribute("data-mm-score");
+      if (score === null) return;
+      var t = ensureTip();
+      var titleVal = el.getAttribute("data-mm-title");
+      var descVal  = el.getAttribute("data-mm-desc");
+      var html = "";
+      if (titleVal) html += '<div style="font-size:13px;font-weight:700;color:#0f1724;margin-bottom:2px">' + esc(titleVal) + '</div>';
+      html += '<div style="font-size:12px;font-weight:600;color:#8073ff">' + score + '%</div>';
+      if (descVal) html += '<p style="margin:3px 0 0;font-size:11px;color:#4b5563;line-height:1.4">' + esc(descVal) + '</p>';
+      t.innerHTML = html;
+      t.style.display = "block";
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!tip || tip.style.display === "none") return;
+      tip.style.left = (e.clientX - tip.offsetWidth / 2) + "px";
+      tip.style.top  = (e.clientY - tip.offsetHeight - 14) + "px";
+    });
+    document.addEventListener("mouseout", function (e) {
+      var el = e.target;
+      if (!el || !el.getAttribute) return;
+      if (el.getAttribute("data-mm-score") !== null && tip) tip.style.display = "none";
+    });
+  })();
+
+  try {
+    render();
+  } catch (err) {
+    var rootEl = document.getElementById("root");
+    if (rootEl) {
+      rootEl.innerHTML = '<div style="padding:40px 32px;font-family:monospace;font-size:13px;color:#b91c1c">'
+        + '<strong>Blueprint render error</strong><br><br>'
+        + String(err)
+        + '</div>';
+    }
+    throw err;
+  }
 })();
 `;
 
@@ -814,6 +942,14 @@ export function downloadBlueprintHtml(
 ): void {
   const css   = captureCss();
   const title = escapeHtml(fileName || "Service Blueprint");
+
+  // Pre-render motivation map SVGs at export time so they don't stretch
+  // and can carry interactive tooltip attributes.
+  const mmSvgs: Record<string, string> = {};
+  for (const mm of data.motivationMaps ?? []) {
+    const gradientId = `mmg_${mm.swimlaneId.replace(/[^a-z0-9]/gi, "_")}`;
+    mmSvgs[mm.swimlaneId] = buildMmSvg(mm.points ?? [], gradientId);
+  }
 
   const html =
     "<!DOCTYPE html>\n" +
@@ -828,9 +964,10 @@ export function downloadBlueprintHtml(
     '<body style="margin:0;padding:0;background:#f5f0eb">\n' +
     '  <div id="root"></div>\n' +
     "  <script>\n" +
-    "    window.__BLUEPRINT_DATA__  = " + safeJsonForScript(data) + ";\n" +
-    "    window.__BLUEPRINT_MEDIA__ = " + safeJsonForScript(mediaOverrides) + ";\n" +
-    "    window.__BLUEPRINT_TITLE__ = " + safeJsonForScript(fileName || "Service Blueprint") + ";\n" +
+    "    window.__BLUEPRINT_DATA__    = " + safeJsonForScript(data) + ";\n" +
+    "    window.__BLUEPRINT_MEDIA__   = " + safeJsonForScript(mediaOverrides) + ";\n" +
+    "    window.__BLUEPRINT_TITLE__   = " + safeJsonForScript(fileName || "Service Blueprint") + ";\n" +
+    "    window.__BLUEPRINT_MM_SVGS__ = " + safeJsonForScript(mmSvgs) + ";\n" +
     "  </script>\n" +
     "  <script>" + VIEWER_SCRIPT + "</script>\n" +
     "</body>\n" +

@@ -149,7 +149,7 @@ export function MotivationMap({ points, editMode, onDragPoint, onEditPoint, onAd
   );
 
   const handleSvgPointerUp = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
+    (_e: React.PointerEvent<SVGSVGElement>) => {
       if (!dragging) return;
       onDragPoint?.(dragging.origIndex, dragging.x, dragging.score);
       setDragging(null);
