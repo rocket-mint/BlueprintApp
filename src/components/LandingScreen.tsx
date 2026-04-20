@@ -76,6 +76,14 @@ export function LandingScreen({ onLoaded }: Props) {
             type="button"
             onClick={() => bpInputRef.current?.click()}
             disabled={loading}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files[0];
+              if (f) handleBpFile(f);
+            }}
             className="group flex flex-col items-center gap-5 rounded-[20px] border-2 border-neutral-gray-200 bg-white px-8 py-10 text-center transition-all hover:border-brand-cyan-500 hover:shadow-lg disabled:opacity-60"
           >
             <div className="grid h-16 w-16 place-items-center rounded-full bg-brand-cyan-500/10 text-brand-cyan-500 transition-colors group-hover:bg-brand-cyan-500 group-hover:text-white">
@@ -96,7 +104,7 @@ export function LandingScreen({ onLoaded }: Props) {
           <input
             ref={bpInputRef}
             type="file"
-            accept=".bp"
+            accept=".bp,.bp.zip,application/octet-stream,application/zip"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
