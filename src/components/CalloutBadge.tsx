@@ -78,12 +78,12 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
       style={customStyle}
       title={callout.description ?? undefined}
     >
-      <span className={`shrink-0 text-[11px] leading-none ${style.icon}`}>
+      <span className={`shrink-0 text-[12px] leading-none ${style.icon}`}>
         {CALLOUT_ICONS[callout.type]}
       </span>
       <div className="min-w-0 flex-1 break-words">
         {callout.label && (
-          <div className={`text-[11px] font-semibold uppercase tracking-wider ${style.text}`}>
+          <div className={`text-[12px] font-semibold uppercase tracking-wider ${style.text}`}>
             {callout.label}
           </div>
         )}
@@ -93,7 +93,7 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
           </div>
         )}
         {callout.description && (
-          <div className="mt-0.5 text-[11px] text-neutral-gray-600 [&_li]:ml-3 [&_li]:list-disc [&_ul]:pl-1">
+          <div className="mt-0.5 text-[12px] text-neutral-gray-600 [&_li]:ml-3 [&_li]:list-disc [&_ul]:pl-1">
             {renderMarkdown(callout.description)}
           </div>
         )}
