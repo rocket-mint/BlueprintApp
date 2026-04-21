@@ -1,6 +1,6 @@
 // Always-visible left sidebar. Sticky 250px column inside the top-level flex
 // row in App.tsx, scrolls with the page until pinned to top:0 of the viewport.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface SidebarProps {
   editMode?: boolean;
@@ -61,33 +61,48 @@ function EditableText({
   );
 }
 
-/** Minimal rich-text editor: bold, italic, bullet list via execCommand */
-function RichTextEditor({
-  value,
-  onChange,
+/**
+ * Minimal rich-text editor: bold, italic, bullet list via execCommand.
+ *
+ * Uncontrolled: sets innerHTML ONCE on mount from `initialValue` and lets the
+ * browser's contenteditable manage the DOM afterward. React never touches the
+ * contenteditable's children again. Parent reads the current HTML on demand
+ * via the `ref.current.getHtml()` method.
+ */
+export interface RichTextHandle {
+  getHtml(): string;
+}
+
+const RichTextEditor = ({
+  initialValue,
+  handleRef,
   className = "",
   placeholder = "",
 }: {
-  value: string;
-  onChange: (html: string) => void;
+  initialValue: string;
+  handleRef: React.MutableRefObject<RichTextHandle | null>;
   className?: string;
   placeholder?: string;
-}) {
+}) => {
   const editorRef = useRef<HTMLDivElement>(null);
-  // Capture the incoming value at mount time and never re-render it.
-  // We let the browser's contenteditable manage the DOM after that, and
-  // keep onChange updated via onInput/onBlur. This avoids React's
-  // reconciliation from ever clobbering the contenteditable's children.
-  const [initialHtml] = useState(value);
 
-  const sync = () => {
-    onChange(editorRef.current?.innerHTML ?? "");
-  };
+  // Set initial HTML once on mount. Empty deps — never re-run.
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.innerHTML = initialValue;
+    }
+    handleRef.current = {
+      getHtml: () => editorRef.current?.innerHTML ?? "",
+    };
+    return () => {
+      handleRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function exec(cmd: string, arg?: string) {
     editorRef.current?.focus();
     document.execCommand(cmd, false, arg);
-    sync();
   }
 
   const ToolBtn = ({ cmd, arg, title, children }: {
@@ -120,25 +135,18 @@ function RichTextEditor({
           </svg>
         </ToolBtn>
       </div>
-      {/* Editable area */}
+      {/* Editable area — no children in JSX; innerHTML set via ref on mount */}
       <div
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
         data-placeholder={placeholder}
-        onInput={sync}
-        onBlur={sync}
-        // Initial content is rendered via dangerouslySetInnerHTML so React
-        // treats it as its own children and won't clear them on re-render.
-        // We never update the HTML from props afterward — contenteditable owns
-        // the DOM state until unmount.
-        dangerouslySetInnerHTML={{ __html: initialHtml }}
         className={`min-h-[80px] px-2 py-1 text-brand-navy-900 outline-none [&_ul]:ml-4 [&_ul]:list-disc ${className}`}
         style={{ whiteSpace: "pre-wrap" }}
       />
     </div>
   );
-}
+};
 
 /** Color swatch that doubles as a color-picker trigger in edit mode */
 function KeySwatch({
@@ -185,21 +193,52 @@ function KeySwatch({
 }
 
 export function Sidebar({ editMode }: SidebarProps) {
+  // Committed ("saved") values — what view mode shows.
   const [title, setTitle]     = useState(DEFAULTS.title);
   const [intro, setIntro]     = useState(DEFAULTS.intro);
   const [howToUse, setHowToUse] = useState(DEFAULTS.howToUse);
   const [keyItems, setKeyItems] = useState<KeyItem[]>(DEFAULT_KEY_ITEMS);
 
+  // Draft values — what the edit mode inputs bind to. Seeded from committed
+  // values whenever the user enters edit mode. Committed on "Save changes".
+  const [draftTitle, setDraftTitle] = useState(title);
+  const [draftKeyItems, setDraftKeyItems] = useState<KeyItem[]>(keyItems);
+  const introRef = useRef<RichTextHandle | null>(null);
+  const howToUseRef = useRef<RichTextHandle | null>(null);
+  // Bump this key whenever we enter edit mode — forces RichTextEditor to
+  // remount so its initial innerHTML reflects the current committed value.
+  const [editSessionKey, setEditSessionKey] = useState(0);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    if (editMode) {
+      setDraftTitle(title);
+      setDraftKeyItems(keyItems);
+      setEditSessionKey((k) => k + 1);
+      setJustSaved(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode]);
+
   function updateItem(i: number, patch: Partial<KeyItem>) {
-    setKeyItems((prev) => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+    setDraftKeyItems((prev) => prev.map((item, idx) => idx === i ? { ...item, ...patch } : item));
   }
 
   function removeItem(i: number) {
-    setKeyItems((prev) => prev.filter((_, idx) => idx !== i));
+    setDraftKeyItems((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   function addItem() {
-    setKeyItems((prev) => [...prev, { label: "New item", bg: "#6b7280", border: "" }]);
+    setDraftKeyItems((prev) => [...prev, { label: "New item", bg: "#6b7280", border: "" }]);
+  }
+
+  function saveChanges() {
+    setTitle(draftTitle);
+    setIntro(introRef.current?.getHtml() ?? intro);
+    setHowToUse(howToUseRef.current?.getHtml() ?? howToUse);
+    setKeyItems(draftKeyItems);
+    setJustSaved(true);
+    window.setTimeout(() => setJustSaved(false), 1500);
   }
 
   return (
@@ -215,8 +254,8 @@ export function Sidebar({ editMode }: SidebarProps) {
         </div>
         {editMode ? (
           <EditableText
-            value={title}
-            onChange={setTitle}
+            value={draftTitle}
+            onChange={setDraftTitle}
             className="mt-1 text-xl font-bold leading-tight"
             placeholder="Map title"
           />
@@ -230,8 +269,9 @@ export function Sidebar({ editMode }: SidebarProps) {
       {editMode ? (
         <div className="mb-5">
           <RichTextEditor
-            value={intro}
-            onChange={setIntro}
+            key={`intro-${editSessionKey}`}
+            initialValue={intro}
+            handleRef={introRef}
             className="text-xs leading-relaxed"
             placeholder="Introduction text"
           />
@@ -247,8 +287,9 @@ export function Sidebar({ editMode }: SidebarProps) {
         <Section title="How to use">
           {editMode ? (
             <RichTextEditor
-              value={howToUse}
-              onChange={setHowToUse}
+              key={`how-${editSessionKey}`}
+              initialValue={howToUse}
+              handleRef={howToUseRef}
               className="text-[11px] leading-relaxed"
               placeholder="How to use instructions"
             />
@@ -262,7 +303,7 @@ export function Sidebar({ editMode }: SidebarProps) {
 
         <Section title="Key">
           <ul className="flex flex-col gap-1.5">
-            {keyItems.map((item, i) => (
+            {(editMode ? draftKeyItems : keyItems).map((item, i) => (
               <li key={i} className="group flex items-center gap-2">
                 <KeySwatch
                   bg={item.bg}
@@ -310,6 +351,22 @@ export function Sidebar({ editMode }: SidebarProps) {
           )}
         </Section>
       </div>
+
+      {editMode && (
+        <div className="mt-5 pt-4 border-t border-brand-navy-900/10">
+          <button
+            type="button"
+            onClick={saveChanges}
+            className={`w-full rounded-md px-4 py-2 text-xs font-semibold text-white transition ${
+              justSaved
+                ? "bg-semantic-success"
+                : "bg-brand-purple-500 hover:bg-brand-purple-600"
+            }`}
+          >
+            {justSaved ? "Saved ✓" : "Save changes"}
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
