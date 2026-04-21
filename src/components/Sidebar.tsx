@@ -1,6 +1,6 @@
 // Always-visible left sidebar. Sticky 250px column inside the top-level flex
 // row in App.tsx, scrolls with the page until pinned to top:0 of the viewport.
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 interface SidebarProps {
   editMode?: boolean;
@@ -74,25 +74,20 @@ function RichTextEditor({
   placeholder?: string;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
-  // Track whether we've already set initial content so we don't reset the
-  // cursor on every keystroke.
-  const initializedRef = useRef(false);
+  // Capture the incoming value at mount time and never re-render it.
+  // We let the browser's contenteditable manage the DOM after that, and
+  // keep onChange updated via onInput/onBlur. This avoids React's
+  // reconciliation from ever clobbering the contenteditable's children.
+  const [initialHtml] = useState(value);
 
-  // Set initial HTML once on mount (or when `value` changes from outside).
-  useEffect(() => {
-    const el = editorRef.current;
-    if (!el) return;
-    if (!initializedRef.current) {
-      el.innerHTML = value;
-      initializedRef.current = true;
-    }
-  }, [value]);
+  const sync = () => {
+    onChange(editorRef.current?.innerHTML ?? "");
+  };
 
   function exec(cmd: string, arg?: string) {
     editorRef.current?.focus();
     document.execCommand(cmd, false, arg);
-    // Sync after command
-    onChange(editorRef.current?.innerHTML ?? "");
+    sync();
   }
 
   const ToolBtn = ({ cmd, arg, title, children }: {
@@ -131,7 +126,13 @@ function RichTextEditor({
         contentEditable
         suppressContentEditableWarning
         data-placeholder={placeholder}
-        onInput={() => onChange(editorRef.current?.innerHTML ?? "")}
+        onInput={sync}
+        onBlur={sync}
+        // Initial content is rendered via dangerouslySetInnerHTML so React
+        // treats it as its own children and won't clear them on re-render.
+        // We never update the HTML from props afterward — contenteditable owns
+        // the DOM state until unmount.
+        dangerouslySetInnerHTML={{ __html: initialHtml }}
         className={`min-h-[80px] px-2 py-1 text-brand-navy-900 outline-none [&_ul]:ml-4 [&_ul]:list-disc ${className}`}
         style={{ whiteSpace: "pre-wrap" }}
       />
