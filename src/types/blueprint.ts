@@ -144,6 +144,10 @@ export interface Callout {
   description?: string;
   /** When true, the stage/phase title is shown as a header inside the badge. Defaults to false. */
   showStageTitle?: boolean;
+  /** Custom background color for the callout badge (CSS color string). Overrides the type default. */
+  bgColor?: string;
+  /** Custom border color for the callout badge (CSS color string). Overrides the type default. */
+  borderColor?: string;
   order: number;
 }
 

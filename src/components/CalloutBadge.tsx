@@ -60,9 +60,22 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
   const isEditing = state.editingEntity?.id === callout.id;
   const style = CALLOUT_STYLES[callout.type] ?? CALLOUT_STYLES.note;
 
+  const hasCustomBg = Boolean(callout.bgColor);
+  const hasCustomBorder = Boolean(callout.borderColor);
+  const bgClass = hasCustomBg ? "" : style.bg;
+  const borderClass = isEditing
+    ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500"
+    : hasCustomBorder
+      ? ""
+      : style.border;
+  const customStyle: React.CSSProperties = {};
+  if (hasCustomBg) customStyle.backgroundColor = callout.bgColor;
+  if (hasCustomBorder && !isEditing) customStyle.borderColor = callout.borderColor;
+
   return (
     <div
-      className={`group/co flex w-[300px] shrink-0 items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${isEditing ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500" : style.border}`}
+      className={`group/co flex w-[300px] shrink-0 items-start gap-1.5 rounded-md border p-1.5 ${bgClass} ${borderClass}`}
+      style={customStyle}
       title={callout.description ?? undefined}
     >
       <span className={`shrink-0 text-[11px] leading-none ${style.icon}`}>
