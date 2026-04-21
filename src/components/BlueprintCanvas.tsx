@@ -494,7 +494,6 @@ function SectionCard({
         onToggleCollapse={() => onToggleCollapse(sl.id)}
         dragProps={dragProps}
         groupPhases={groupPhases}
-        phaseMinWidths={phaseMinWidths}
         editingEntityId={editingEntityId}
         rowHasTouchpoints={rowHasTouchpoints}
         stages={sectionStages}
@@ -891,7 +890,6 @@ function MomentsGridRow({
   onToggleCollapse,
   dragProps,
   groupPhases,
-  phaseMinWidths,
   editingEntityId,
   rowHasTouchpoints,
   stages,
@@ -910,8 +908,6 @@ function MomentsGridRow({
   /** Phases belonging to this swimlane's phase group, sorted by order. When provided,
    *  each stage cell is subdivided into per-phase sub-cells. */
   groupPhases?: Phase[];
-  /** Per-phase minimum pixel widths — must match the phase header row so pills and sub-cells align. */
-  phaseMinWidths?: Map<string, number>;
   editingEntityId?: string | null;
   /** True if any column in this swimlane row has at least one touchpoint. */
   rowHasTouchpoints: boolean;
