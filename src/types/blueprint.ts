@@ -1,15 +1,10 @@
-// New hierarchical domain model for the blueprint editor.
+// Hierarchical domain model for the blueprint editor.
 //
 // Hierarchy: Blueprint > Section > JourneyStage > Phase > Swimlane > Touchpoint
 //
-// Excel structure is 7 sheets:
-//   1. Sections         -> Section[]
-//   2. Journey Stages   -> JourneyStage[]
-//   3. Phases           -> Phase[]
-//   4. Swimlanes        -> Swimlane[]
-//   5. Touchpoints      -> Touchpoint[]
-//   6. Callouts         -> Callout[]
-//   7. Motivation Maps  -> MotivationMap[]
+// Top-level collections on a Blueprint:
+//   - sections, stageGroups, journeyStages, phases, swimlanes,
+//     touchpoints, callouts, motivationMaps, sidebar
 
 // ---------------------------------------------------------------------------
 // Section — top-level grouping of stages (e.g. "Pre-Purchase", "Onboarding")
@@ -108,9 +103,9 @@ export interface Touchpoint {
   description?: string;
   iconColor?: string;
   order: number;
-  /** Optional Excel-provided image URL — overridden by per-touchpoint Media. */
+  /** Optional default image URL — overridden by per-touchpoint Media. */
   imageUrl?: string;
-  /** Optional Excel-provided link — overridden by per-touchpoint Media. */
+  /** Optional default link — overridden by per-touchpoint Media. */
   linkUrl?: string;
   /** User-uploaded photos (data URLs or remote URLs). */
   photos: string[];

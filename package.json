@@ -9,11 +9,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "sample": "node scripts/generate-sample.mjs",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
-    "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
