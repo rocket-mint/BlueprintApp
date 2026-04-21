@@ -552,6 +552,7 @@ function SectionCard({
           <button
             type="button"
             onClick={() => onToggleSectionCollapse(section.id)}
+            data-section-collapse-for={section.id}
             className="flex flex-1 items-start gap-3 text-left transition-opacity hover:opacity-80"
             title={`Collapse ${section.name}`}
           >
@@ -574,7 +575,7 @@ function SectionCard({
       </div>
 
       {/* ══ Single grid ══ */}
-      <div style={grid}>
+      <div style={grid} data-section-body={section.id}>
 
         {/* ── Stage Group headers (shown when any stage group exists in section) ── */}
         {hasStageGroups && (
@@ -727,7 +728,7 @@ function SectionCard({
           return (
             <React.Fragment key={item.id}>
               {/* PhaseRow */}
-              <div style={{ display: "contents" }}>
+              <div style={{ display: "contents" }} data-phasegroup-header={item.id}>
                 {/* Column-1 label — drag handle for the whole group */}
                 <div
                   style={{ gridColumn: 1 }}
@@ -753,6 +754,7 @@ function SectionCard({
                   <button
                     type="button"
                     onClick={() => onTogglePhaseGroupCollapse(item.id)}
+                    data-phasegroup-collapse-for={item.id}
                     className="flex shrink-0 items-center justify-center rounded p-0.5 text-neutral-gray-500 hover:bg-neutral-gray-100 hover:text-brand-navy-1000"
                     aria-label={collapsedPhaseGroups.has(item.id) ? "Expand phase group" : "Collapse phase group"}
                     title={collapsedPhaseGroups.has(item.id) ? "Expand phase group" : "Collapse phase group"}
@@ -782,6 +784,7 @@ function SectionCard({
                     <button
                       type="button"
                       onClick={() => onTogglePhaseGroupCollapse(item.id)}
+                      data-phasegroup-collapse-for={item.id}
                       className="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000 hover:text-brand-cyan-700 cursor-pointer bg-transparent border-none p-0"
                     >
                       {item.phases[0]?.groupLabel || "Phase"}
@@ -792,7 +795,7 @@ function SectionCard({
                 {!collapsedPhaseGroups.has(item.id) && sectionStages.map((s) => {
                   const stagePhases = item.phases.filter((p) => p.stageId === s.id);
                   return (
-                    <div key={s.id} className="flex items-stretch gap-1.5 pt-3">
+                    <div key={s.id} data-phasegroup-body={item.id} className="flex items-stretch gap-1.5 pt-3">
                       {stagePhases.map((phase) => (
                         <div
                           key={phase.id}
@@ -849,12 +852,16 @@ function SectionCard({
                       onDragEnd: () => { setGroupDragSl(null); setGroupDragOverSlId(null); },
                     }
                   : undefined;
-                return renderSwimlane(sl, dragProps, isJustMovedSl);
+                return (
+                  <div key={sl.id} style={{ display: "contents" }} data-phasegroup-body={item.id}>
+                    {renderSwimlane(sl, dragProps, isJustMovedSl)}
+                  </div>
+                );
               })}
 
               {/* + Swimlane */}
               {!collapsedPhaseGroups.has(item.id) && editMode && (
-                <div style={{ gridColumn: `1 / ${totalCols + 1}` }} className="pt-1">
+                <div style={{ gridColumn: `1 / ${totalCols + 1}` }} data-phasegroup-body={item.id} className="pt-1">
                   <AddButton type="swimlane" label="Swimlane" parentId={`${section.id}:${item.id}`} onClick={onEditEntity} />
                 </div>
               )}

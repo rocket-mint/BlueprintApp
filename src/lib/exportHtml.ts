@@ -170,8 +170,8 @@ const INTERACTION_SCRIPT = `
           + 'transform:translate(-50%,-50%);width:' + DOT_D + 'px;height:' + DOT_D + 'px;'
           + 'border-radius:50%;background:' + PURPLE + ';border:2px solid white;'
           + 'box-shadow:0 1px 4px rgba(0,0,0,0.15);z-index:1;cursor:default;transition:transform 120ms"'
-          + ' onmouseover="this.style.transform=\'translate(-50%,-50%) scale(1.35)\'"'
-          + ' onmouseout="this.style.transform=\'translate(-50%,-50%) scale(1)\'"></div>';
+          + ' onmouseover="this.style.transform=\\'translate(-50%,-50%) scale(1.35)\\'"'
+          + ' onmouseout="this.style.transform=\\'translate(-50%,-50%) scale(1)\\'"></div>';
       }).join("");
 
       el.innerHTML = svg + dots;
@@ -227,7 +227,10 @@ const INTERACTION_SCRIPT = `
   })();
 
   // ── Swimlane collapse ──
-  // window.__slToggle is called via inline onclick set during HTML export.
+  // Some sl-cells have inline display values (e.g. the callout strip uses
+  // display:grid for subgrid). Clearing style.display on expand would fall
+  // back to "block" and break layout. Cache inline display on collapse and
+  // restore it on expand.
   var __slCollapsed = {};
   window.__slToggle = function (btn, slId) {
     var cells = document.querySelectorAll("[data-sl-cell]");
@@ -238,11 +241,19 @@ const INTERACTION_SCRIPT = `
     if (!matches.length) return;
     var chevron = btn.querySelector("svg");
     if (__slCollapsed[slId]) {
-      matches.forEach(function (c) { c.style.display = ""; });
+      matches.forEach(function (c) {
+        var prev = c.getAttribute("data-sl-prev-display");
+        c.style.display = prev == null ? "" : prev;
+      });
       if (chevron) chevron.style.transform = "rotate(90deg)";
       __slCollapsed[slId] = false;
     } else {
-      matches.forEach(function (c) { c.style.display = "none"; });
+      matches.forEach(function (c) {
+        if (!c.hasAttribute("data-sl-prev-display")) {
+          c.setAttribute("data-sl-prev-display", c.style.display || "");
+        }
+        c.style.display = "none";
+      });
       if (chevron) chevron.style.transform = "";
       __slCollapsed[slId] = true;
     }
@@ -284,24 +295,30 @@ const INTERACTION_SCRIPT = `
     });
   })();
 
-  // ── Drag-to-pan ──
+  // ── Drag-to-pan (both axes) ──
   (function () {
-    var dragEl = null, startX = 0, startScroll = 0, moved = 0, capturedId = null;
+    var dragEl = null, startX = 0, startY = 0, startScrollX = 0, startScrollY = 0, moved = 0, capturedId = null;
     document.addEventListener("pointerdown", function (e) {
       if (e.button !== 0) return;
       var t = e.target;
-      if (!t || t.closest("button,a,input,select,textarea,label")) return;
+      if (!t || t.closest("button,a,input,select,textarea,label,[data-collapse-for],[data-section-collapse-for],[data-phasegroup-collapse-for]")) return;
       var scroller = t.closest("[data-scroller]");
       if (!scroller) return;
-      dragEl = scroller; startX = e.clientX; startScroll = scroller.scrollLeft; moved = 0; capturedId = e.pointerId;
+      dragEl = scroller;
+      startX = e.clientX; startY = e.clientY;
+      startScrollX = scroller.scrollLeft; startScrollY = scroller.scrollTop;
+      moved = 0; capturedId = e.pointerId;
       scroller.style.cursor = "grabbing"; scroller.style.userSelect = "none";
       try { scroller.setPointerCapture(e.pointerId); } catch (err) {}
     });
     document.addEventListener("pointermove", function (e) {
       if (!dragEl) return;
       var dx = e.clientX - startX;
-      if (Math.abs(dx) > moved) moved = Math.abs(dx);
-      dragEl.scrollLeft = startScroll - dx;
+      var dy = e.clientY - startY;
+      var m = Math.max(Math.abs(dx), Math.abs(dy));
+      if (m > moved) moved = m;
+      dragEl.scrollLeft = startScrollX - dx;
+      dragEl.scrollTop  = startScrollY - dy;
     });
     function endDrag() {
       if (!dragEl) return;
@@ -312,6 +329,64 @@ const INTERACTION_SCRIPT = `
     document.addEventListener("pointerup", endDrag);
     document.addEventListener("pointercancel", endDrag);
   })();
+
+  // ── Phase group collapse ──
+  // NOTE: bodies include display:contents wrappers (swimlane rows).
+  // Setting style.display = "" would clear the inline display and fall back
+  // to "block", which breaks grid layout. We cache the original inline value
+  // on first collapse and restore it on expand.
+  var __pgCollapsed = {};
+  function __pgToggle(btn, pgId) {
+    var bodies = document.querySelectorAll('[data-phasegroup-body="' + pgId + '"]');
+    if (!bodies.length) return;
+    var chevronBtn = document.querySelector('[data-phasegroup-collapse-for="' + pgId + '"]');
+    var chevron = chevronBtn ? chevronBtn.querySelector("svg") : null;
+    if (__pgCollapsed[pgId]) {
+      for (var i = 0; i < bodies.length; i++) {
+        var el = bodies[i];
+        var prev = el.getAttribute("data-pg-prev-display");
+        el.style.display = prev == null ? "" : prev;
+      }
+      if (chevron) chevron.style.transform = "";
+      __pgCollapsed[pgId] = false;
+    } else {
+      for (var i = 0; i < bodies.length; i++) {
+        var el = bodies[i];
+        if (!el.hasAttribute("data-pg-prev-display")) {
+          el.setAttribute("data-pg-prev-display", el.style.display || "");
+        }
+        el.style.display = "none";
+      }
+      if (chevron) chevron.style.transform = "rotate(-90deg)";
+      __pgCollapsed[pgId] = true;
+    }
+  }
+
+  // ── Collapse buttons (event delegation) ──
+  // Section chevrons are intentionally NOT wired in the export — sections
+  // are always expanded in the read-only view.
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+
+    // Swallow clicks on the section chevron so it doesn't feel interactive.
+    var secBtn = t.closest("[data-section-collapse-for]");
+    if (secBtn) { e.preventDefault(); e.stopPropagation(); return; }
+
+    var pgBtn = t.closest("[data-phasegroup-collapse-for]");
+    if (pgBtn) {
+      var pgId = pgBtn.getAttribute("data-phasegroup-collapse-for");
+      if (pgId) { e.preventDefault(); e.stopPropagation(); __pgToggle(pgBtn, pgId); }
+      return;
+    }
+
+    var slBtn = t.closest("[data-collapse-for]");
+    if (slBtn) {
+      var slId = slBtn.getAttribute("data-collapse-for");
+      if (slId) { e.preventDefault(); e.stopPropagation(); window.__slToggle(slBtn, slId); }
+      return;
+    }
+  });
 })();
 `;
 
@@ -358,12 +433,21 @@ export function downloadBlueprintHtml(
     el.innerHTML = mmHtmls[swimlaneId];
   });
 
-  // Wire up collapse buttons via inline onclick — more reliable than event delegation
-  // because it doesn't depend on CSS.escape or attribute query edge cases.
-  mainClone.querySelectorAll<HTMLElement>("[data-collapse-for]").forEach((btn) => {
-    const slId = btn.getAttribute("data-collapse-for");
-    if (!slId) return;
-    btn.setAttribute("onclick", `window.__slToggle(this,'${slId.replace(/'/g, "\\'")}')`);
+  // Collapse buttons are wired via document-level click delegation in the
+  // interaction script — no per-button inline onclick needed.
+
+  // Section chevrons are not interactive in the export. Strip the chevron
+  // icon from section title buttons so it doesn't suggest the section can
+  // be collapsed, and reset the cursor to default.
+  mainClone.querySelectorAll<HTMLElement>("[data-section-collapse-for]").forEach((btn) => {
+    const svg = btn.querySelector("svg");
+    const chevronWrapper = svg?.parentElement;
+    if (chevronWrapper && chevronWrapper !== btn) {
+      chevronWrapper.remove();
+    } else if (svg) {
+      svg.remove();
+    }
+    btn.style.cursor = "default";
   });
 
   // ── 5. Clone sidebar ──
@@ -395,11 +479,6 @@ export function downloadBlueprintHtml(
     '  <div style="display:flex;height:100vh;overflow:hidden;background:#f5f0eb">\n' +
     (sidebarHtml ? "    " + sidebarHtml + "\n" : "") +
     '    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">\n' +
-    '      <header style="flex-shrink:0;display:flex;align-items:center;gap:16px;' +
-    'border-bottom:1px solid #e5e7eb;background:#fff;padding:12px 24px;z-index:40">\n' +
-    `        <span style="font-size:15px;font-weight:700;color:#0f1724">${safeTitle}</span>\n` +
-    '        <span style="margin-left:auto;font-size:11px;color:#6b7280">Service Blueprint \u2014 Read only</span>\n' +
-    '      </header>\n' +
     '      <div data-scroller style="flex:1;min-width:0;overflow:auto;cursor:grab">\n' +
     "        " + mainClone.innerHTML + "\n" +
     "      </div>\n" +
