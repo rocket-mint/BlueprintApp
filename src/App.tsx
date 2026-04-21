@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LandingScreen } from "./components/LandingScreen";
 import { Blueprint } from "./components/Blueprint";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -8,6 +8,7 @@ import { BlueprintProvider } from "./context/BlueprintContext";
 import { useBlueprint } from "./hooks/useBlueprint";
 import { useDragScroll } from "./lib/useDragScroll";
 import { downloadBlueprintHtml } from "./lib/exportHtml";
+import { zoomIn, zoomOut } from "./lib/zoomLevels";
 import { saveBlueprintFile } from "./utils/blueprintFile";
 import type { Media } from "./components/MediaModal";
 import { allStagesOrdered } from "./utils/dataUtils";
@@ -15,10 +16,29 @@ import { allStagesOrdered } from "./utils/dataUtils";
 type Route = "landing" | "editor";
 
 function AppContent() {
-  const { state, loadBlueprint, reset, setEditMode } = useBlueprint();
-  const { blueprint, fileName, touchpointMedia, editMode } = state;
+  const { state, loadBlueprint, setEditMode, setZoom } = useBlueprint();
+  const { blueprint, fileName, touchpointMedia, editMode, zoom } = state;
   const dragRef = useDragScroll<HTMLElement>();
   const [route, setRoute] = useState<Route>("landing");
+
+  // ── Zoom keyboard shortcuts (Ctrl/Cmd +, -, 0) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        setZoom(zoomIn(zoom));
+      } else if (e.key === "-") {
+        e.preventDefault();
+        setZoom(zoomOut(zoom));
+      } else if (e.key === "0") {
+        e.preventDefault();
+        setZoom(1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom, setZoom]);
   // Snapshot taken when entering edit mode — restored on cancel
   const blueprintSnapshot = useRef<typeof blueprint>(null);
 
@@ -30,11 +50,6 @@ function AppContent() {
     },
     [loadBlueprint],
   );
-
-  const handleReset = useCallback(() => {
-    reset();
-    setRoute("landing");
-  }, [reset]);
 
   // Export
   const exportData = useMemo(() => {
@@ -81,13 +96,21 @@ function AppContent() {
         }}
         onSaveBp={handleSaveBp}
         onDownload={handleDownload}
-        onHome={handleReset}
+        zoom={zoom}
+        onZoomIn={() => setZoom(zoomIn(zoom))}
+        onZoomOut={() => setZoom(zoomOut(zoom))}
+        onZoomReset={() => setZoom(1)}
       />
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar editMode={editMode} />
 
-        <main ref={dragRef} id="bp-export-main" className="flex-1 overflow-auto">
+        <main
+          ref={dragRef}
+          id="bp-export-main"
+          className="flex-1 overflow-auto"
+          style={{ zoom }}
+        >
           <div className="w-max min-w-full px-4 py-4 sm:px-6">
             {blueprint && (
               <ErrorBoundary>

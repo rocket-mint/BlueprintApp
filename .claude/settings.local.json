@@ -15,7 +15,8 @@
       "Bash(node --check viewer_test.js)",
       "Bash(rm viewer_test.js)",
       "Bash(ls *.toml *.json vercel.json netlify.toml .vercel)",
-      "Bash(ls *.json *.yaml *.yml .github)"
+      "Bash(ls *.json *.yaml *.yml .github)",
+      "Bash(ls tailwind.config*)"
     ]
   }
 }

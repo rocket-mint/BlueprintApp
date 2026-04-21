@@ -512,7 +512,7 @@ function SectionCard({
           className="flex w-full items-center gap-3 rounded-[20px] px-10 py-5 text-left transition-colors hover:bg-neutral-gray-50"
         >
           <Chevron open={false} />
-          <span className="text-xl font-light text-brand-navy-1000">{section.name}</span>
+          <span className="text-xl font-bold text-brand-navy-1000">{section.name}</span>
           {section.description && (
             <span className="text-sm text-neutral-gray-600">— {section.description}</span>
           )}
@@ -558,7 +558,7 @@ function SectionCard({
           >
             <span className="mt-2 text-neutral-gray-500"><Chevron open /></span>
             <div className="flex flex-col gap-1">
-              <h2 className="text-xl font-light leading-tight text-brand-navy-1000 sm:text-2xl">
+              <h2 className="text-xl font-bold leading-tight text-brand-navy-1000 sm:text-2xl">
                 {section.name}
               </h2>
               {section.description && (

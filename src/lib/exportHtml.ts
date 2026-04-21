@@ -301,7 +301,7 @@ const INTERACTION_SCRIPT = `
     document.addEventListener("pointerdown", function (e) {
       if (e.button !== 0) return;
       var t = e.target;
-      if (!t || t.closest("button,a,input,select,textarea,label,[data-collapse-for],[data-section-collapse-for],[data-phasegroup-collapse-for]")) return;
+      if (!t || t.closest("button,a,input,select,textarea,label,[data-collapse-for],[data-section-collapse-for],[data-phasegroup-collapse-for],[data-zoom-ui]")) return;
       var scroller = t.closest("[data-scroller]");
       if (!scroller) return;
       dragEl = scroller;
@@ -387,6 +387,39 @@ const INTERACTION_SCRIPT = `
       return;
     }
   });
+
+  // ── Zoom ──
+  (function () {
+    var LEVELS = [0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
+    var z = 1;
+    var root = document.getElementById("bp-zoom-root");
+    var label = document.querySelector("[data-zoom-reset]");
+    function apply() {
+      if (root) root.style.zoom = z;
+      if (label) label.textContent = Math.round(z * 100) + "%";
+    }
+    function stepUp() {
+      for (var i = 0; i < LEVELS.length; i++) if (LEVELS[i] > z + 0.001) { z = LEVELS[i]; break; }
+      apply();
+    }
+    function stepDown() {
+      for (var i = LEVELS.length - 1; i >= 0; i--) if (LEVELS[i] < z - 0.001) { z = LEVELS[i]; break; }
+      apply();
+    }
+    function reset() { z = 1; apply(); }
+    var btnIn = document.querySelector("[data-zoom-in]");
+    var btnOut = document.querySelector("[data-zoom-out]");
+    var btnReset = document.querySelector("[data-zoom-reset]");
+    if (btnIn) btnIn.addEventListener("click", stepUp);
+    if (btnOut) btnOut.addEventListener("click", stepDown);
+    if (btnReset) btnReset.addEventListener("click", reset);
+    document.addEventListener("keydown", function (e) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "=" || e.key === "+") { e.preventDefault(); stepUp(); }
+      else if (e.key === "-") { e.preventDefault(); stepDown(); }
+      else if (e.key === "0") { e.preventDefault(); reset(); }
+    });
+  })();
 })();
 `;
 
@@ -422,6 +455,8 @@ export function downloadBlueprintHtml(
 
   // ── 4. Clone main content and patch MotivationMaps + collapse buttons ──
   const mainClone = mainEl.cloneNode(true) as HTMLElement;
+  // Strip the app's current zoom so the exported viewer starts at 100%.
+  mainClone.style.zoom = "";
 
   // Replace live MotivationMap containers with a data-mm-render placeholder.
   // The interaction script reads data-mm-b64 and renders at actual container width.
@@ -480,9 +515,22 @@ export function downloadBlueprintHtml(
     (sidebarHtml ? "    " + sidebarHtml + "\n" : "") +
     '    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">\n' +
     '      <div data-scroller style="flex:1;min-width:0;overflow:auto;cursor:grab">\n' +
-    "        " + mainClone.innerHTML + "\n" +
+    '        <div id="bp-zoom-root" style="zoom:1">\n' +
+    "          " + mainClone.innerHTML + "\n" +
+    "        </div>\n" +
     "      </div>\n" +
     "    </div>\n" +
+    "  </div>\n" +
+    '  <div data-zoom-ui style="position:fixed;bottom:16px;right:16px;z-index:9997;' +
+    "display:flex;align-items:center;gap:2px;background:#fff;border:1px solid #e5e7eb;" +
+    "border-radius:8px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.08);" +
+    'font-family:system-ui,sans-serif">\n' +
+    '    <button type="button" data-zoom-out aria-label="Zoom out" ' +
+    'style="border:0;background:transparent;padding:4px 10px;font-size:16px;cursor:pointer;border-radius:4px">−</button>\n' +
+    '    <button type="button" data-zoom-reset aria-label="Reset zoom" ' +
+    'style="border:0;background:transparent;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;min-width:48px;font-variant-numeric:tabular-nums">100%</button>\n' +
+    '    <button type="button" data-zoom-in aria-label="Zoom in" ' +
+    'style="border:0;background:transparent;padding:4px 10px;font-size:16px;cursor:pointer;border-radius:4px">+</button>\n' +
     "  </div>\n" +
     '  <script>window.__BP_TP_DATA__ = ' + safeJsonForScript(tpData) + ';</script>\n' +
     "  <script>" + INTERACTION_SCRIPT + "</script>\n" +
