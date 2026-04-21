@@ -1,15 +1,10 @@
-// New hierarchical domain model for the blueprint editor.
+// Hierarchical domain model for the blueprint editor.
 //
 // Hierarchy: Blueprint > Section > JourneyStage > Phase > Swimlane > Touchpoint
 //
-// Excel structure is 7 sheets:
-//   1. Sections         -> Section[]
-//   2. Journey Stages   -> JourneyStage[]
-//   3. Phases           -> Phase[]
-//   4. Swimlanes        -> Swimlane[]
-//   5. Touchpoints      -> Touchpoint[]
-//   6. Callouts         -> Callout[]
-//   7. Motivation Maps  -> MotivationMap[]
+// Top-level collections on a Blueprint:
+//   - sections, stageGroups, journeyStages, phases, swimlanes,
+//     touchpoints, callouts, motivationMaps, sidebar
 
 // ---------------------------------------------------------------------------
 // Section — top-level grouping of stages (e.g. "Pre-Purchase", "Onboarding")
@@ -108,9 +103,9 @@ export interface Touchpoint {
   description?: string;
   iconColor?: string;
   order: number;
-  /** Optional Excel-provided image URL — overridden by per-touchpoint Media. */
+  /** Optional default image URL — overridden by per-touchpoint Media. */
   imageUrl?: string;
-  /** Optional Excel-provided link — overridden by per-touchpoint Media. */
+  /** Optional default link — overridden by per-touchpoint Media. */
   linkUrl?: string;
   /** User-uploaded photos (data URLs or remote URLs). */
   photos: string[];
@@ -122,6 +117,8 @@ export interface Touchpoint {
   hoverTitle?: string;
   /** Hover card description — shown when hovering the touchpoint. */
   hoverDescription?: string;
+  /** CTA button label shown at the bottom of the card when a link is present. */
+  ctaText?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +137,12 @@ export interface Callout {
   label?: string;
   title: string;
   description?: string;
+  /** When true, the stage/phase title is shown as a header inside the badge. Defaults to false. */
+  showStageTitle?: boolean;
+  /** Custom background color for the callout badge (CSS color string). Overrides the type default. */
+  bgColor?: string;
+  /** Custom border color for the callout badge (CSS color string). Overrides the type default. */
+  borderColor?: string;
   order: number;
 }
 
@@ -171,6 +174,33 @@ export interface MotivationMap {
 }
 
 // ---------------------------------------------------------------------------
+// SidebarKeyItem — single entry in the Key legend
+// ---------------------------------------------------------------------------
+export interface SidebarKeyItem {
+  label: string;
+  /** Hex color string for the swatch fill. */
+  bg: string;
+  /** Hex color string for the swatch border. Empty string for no border. */
+  border: string;
+}
+
+// ---------------------------------------------------------------------------
+// SidebarConfig — editable sidebar content saved per-file
+// ---------------------------------------------------------------------------
+export interface SidebarConfig {
+  /** Optional logo image (data URL or remote URL). Shown at top of sidebar. */
+  logo?: string;
+  /** Sidebar title (e.g. "Future Journey Map"). */
+  title?: string;
+  /** Intro paragraph — rich HTML (bold, italic, bullet lists). */
+  intro?: string;
+  /** How-to-use paragraph — rich HTML. */
+  howToUse?: string;
+  /** Key legend items. */
+  keyItems?: SidebarKeyItem[];
+}
+
+// ---------------------------------------------------------------------------
 // Blueprint — complete data structure
 // ---------------------------------------------------------------------------
 export interface Blueprint {
@@ -182,6 +212,8 @@ export interface Blueprint {
   touchpoints: Touchpoint[];
   callouts: Callout[];
   motivationMaps: MotivationMap[];
+  /** Sidebar content (title, intro, how-to-use, key legend, logo). */
+  sidebar?: SidebarConfig;
 }
 
 // ---------------------------------------------------------------------------

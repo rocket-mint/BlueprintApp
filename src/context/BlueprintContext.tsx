@@ -9,6 +9,7 @@ import type {
   Callout,
   MotivationMap,
   StageGroup,
+  SidebarConfig,
 } from "../types/blueprint";
 import type { Media } from "../components/MediaModal";
 import { createEmptyBlueprint } from "../utils/dataUtils";
@@ -41,6 +42,8 @@ export interface BlueprintState {
   editMode: boolean;
   /** The entity currently being edited in the drawer, or null. */
   editingEntity: EditingEntity | null;
+  /** Current zoom level for the canvas. 1.0 = 100%. Transient UI state, not persisted. */
+  zoom: number;
 }
 
 const initialState: BlueprintState = {
@@ -53,6 +56,7 @@ const initialState: BlueprintState = {
   editingTouchpoint: null,
   editMode: false,
   editingEntity: null,
+  zoom: 1,
 };
 
 // ---------------------------------------------------------------------------
@@ -94,6 +98,8 @@ type Action =
   | { type: "ADD_MOTIVATION_MAP"; motivationMap: MotivationMap }
   | { type: "UPDATE_MOTIVATION_MAP"; id: string; changes: Partial<Omit<MotivationMap, "id">> }
   | { type: "DELETE_MOTIVATION_MAP"; id: string }
+  // Sidebar config
+  | { type: "UPDATE_SIDEBAR"; changes: Partial<SidebarConfig> }
   // Batch reorder (used by drag-to-reorder)
   | { type: "BATCH_REORDER"; swimlaneOrders?: Array<{ id: string; order: number }>; phaseOrders?: Array<{ id: string; order: number }> }
   // UI state
@@ -111,7 +117,9 @@ type Action =
   | { type: "EXPAND_ALL_PHASE_GROUPS" }
   // Edit mode
   | { type: "SET_EDIT_MODE"; on: boolean }
-  | { type: "SET_EDITING_ENTITY"; entity: EditingEntity | null };
+  | { type: "SET_EDITING_ENTITY"; entity: EditingEntity | null }
+  // Zoom
+  | { type: "SET_ZOOM"; zoom: number };
 
 // ---------------------------------------------------------------------------
 // Reducer helpers
@@ -274,6 +282,15 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
       return { ...state, blueprint: { ...bp, motivationMaps: deleteFromList(bp.motivationMaps, action.id) } };
     }
 
+    // --- Sidebar ---
+    case "UPDATE_SIDEBAR": {
+      const bp = ensureBp(state.blueprint);
+      return {
+        ...state,
+        blueprint: { ...bp, sidebar: { ...(bp.sidebar ?? {}), ...action.changes } },
+      };
+    }
+
     // --- Batch reorder ---
     case "BATCH_REORDER": {
       const bp = ensureBp(state.blueprint);
@@ -361,6 +378,11 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
     case "SET_EDITING_ENTITY":
       return { ...state, editingEntity: action.entity };
 
+    case "SET_ZOOM": {
+      const z = Math.max(0.5, Math.min(2.0, action.zoom));
+      return { ...state, zoom: z };
+    }
+
     default:
       return state;
   }
@@ -401,6 +423,9 @@ export interface BlueprintContextValue {
   // Edit mode
   setEditMode: (on: boolean) => void;
   setEditingEntity: (entity: EditingEntity | null) => void;
+
+  // Zoom
+  setZoom: (zoom: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +493,8 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setZoom = useCallback((zoom: number) => dispatch({ type: "SET_ZOOM", zoom }), []);
+
   const value = useMemo<BlueprintContextValue>(
     () => ({
       state,
@@ -488,6 +515,7 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
       expandAllPhaseGroups,
       setEditMode,
       setEditingEntity,
+      setZoom,
     }),
     [
       state,
@@ -507,6 +535,7 @@ export function BlueprintProvider({ children }: { children: ReactNode }) {
       expandAllPhaseGroups,
       setEditMode,
       setEditingEntity,
+      setZoom,
     ],
   );
 

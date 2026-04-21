@@ -51,7 +51,7 @@ export function SwimlaneCell({
       )}
 
       {callouts.length > 0 && (
-        <div className="flex w-full flex-col gap-1">
+        <div className="flex w-full flex-row flex-wrap gap-1">
           {callouts.map((c) => (
             <CalloutBadge key={c.id} callout={c} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
           ))}

@@ -120,5 +120,4 @@ Save uses `showSaveFilePicker` (native OS dialog) with fallback to blob download
 | `src/components/SwimlaneCell.tsx` | Renders touchpoints + callouts in a cell |
 | `src/lib/blueprintLayout.ts` | Grid CSS constants (`LABEL_COL_W`, `MIN_COL_W`) |
 | `src/utils/blueprintFile.ts` | Save / load `.bp` files |
-| `src/utils/parseExcel.ts` | Import from Excel workbook |
 | `src/utils/sampleBlueprint.ts` | Default blueprint shown on first load |

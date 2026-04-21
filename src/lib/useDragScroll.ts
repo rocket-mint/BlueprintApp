@@ -1,7 +1,13 @@
 import { useCallback, useRef } from "react";
 
-// Click-and-drag panning for a scrollable container (overflow: auto).
+// Hold-Space + drag panning for a scrollable container (overflow: auto).
 // Scrolls the element itself in both X and Y directions.
+//
+// Space must be held to enter pan mode — this prevents accidental text
+// selection on normal click-drag and lets inner elements (e.g. the
+// MotivationMap SVG) keep their own pointer interactions when Space is
+// not held.
+//
 // Uses a callback ref so it works even when the element mounts late
 // (e.g. after a route change).
 export function useDragScroll<T extends HTMLElement>() {
@@ -16,6 +22,7 @@ export function useDragScroll<T extends HTMLElement>() {
 
     if (!el) return;
 
+    let isSpaceHeld = false;
     let isDown = false;
     let startX = 0;
     let startY = 0;
@@ -24,13 +31,58 @@ export function useDragScroll<T extends HTMLElement>() {
     let moved = 0;
     let pointerId: number | null = null;
 
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      const t = target as HTMLElement | null;
+      if (!t) return false;
+      const tag = t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (t.isContentEditable) return true;
+      return false;
+    };
+
+    const enterPanReady = () => {
+      if (isSpaceHeld) return;
+      isSpaceHeld = true;
+      el.style.cursor = "grab";
+      document.body.style.userSelect = "none";
+    };
+
+    const exitPanReady = () => {
+      if (!isSpaceHeld) return;
+      isSpaceHeld = false;
+      // Don't clobber cursor if we're actively dragging — endDrag handles it
+      if (!isDown) el.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      if (e.repeat) {
+        // Still swallow the default (page scroll) while holding
+        if (!isTypingTarget(document.activeElement)) e.preventDefault();
+        return;
+      }
+      if (isTypingTarget(document.activeElement)) return;
+      e.preventDefault();
+      enterPanReady();
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      exitPanReady();
+    };
+
+    const onBlur = () => {
+      // If the window loses focus while Space is held, release pan-ready state
+      exitPanReady();
+    };
+
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      const t = e.target as HTMLElement | null;
-      if (!t) return;
-      if (t.closest("button, a, input, select, textarea, label")) return;
-      // Skip all SVG elements — motivation map handles its own pointer events
-      if (t instanceof SVGElement) return;
+      if (!isSpaceHeld) return; // Pan only with Space held
+      // Space is held — take over: stop inner handlers (e.g. MotivationMap)
+      e.stopImmediatePropagation();
+      e.preventDefault();
       isDown = true;
       moved = 0;
       startX = e.clientX;
@@ -39,7 +91,6 @@ export function useDragScroll<T extends HTMLElement>() {
       startScrollTop = el.scrollTop;
       pointerId = e.pointerId;
       el.style.cursor = "grabbing";
-      el.style.userSelect = "none";
       try {
         el.setPointerCapture(e.pointerId);
       } catch {
@@ -60,8 +111,8 @@ export function useDragScroll<T extends HTMLElement>() {
     const endDrag = () => {
       if (!isDown) return;
       isDown = false;
-      el.style.cursor = "grab";
-      el.style.userSelect = "";
+      // Keep grab cursor if Space is still held, else clear
+      el.style.cursor = isSpaceHeld ? "grab" : "";
       if (pointerId !== null) {
         try {
           el.releasePointerCapture(pointerId);
@@ -81,19 +132,25 @@ export function useDragScroll<T extends HTMLElement>() {
       }
     };
 
-    el.style.cursor = "grab";
-    el.addEventListener("pointerdown", onPointerDown);
+    // Capture phase so we outrank inner pointerdown handlers (MotivationMap dots)
+    el.addEventListener("pointerdown", onPointerDown, { capture: true });
     el.addEventListener("pointermove", onPointerMove);
     el.addEventListener("pointerup", endDrag);
     el.addEventListener("pointercancel", endDrag);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
 
     cleanupRef.current = () => {
-      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointerdown", onPointerDown, { capture: true } as EventListenerOptions);
       el.removeEventListener("pointermove", onPointerMove);
       el.removeEventListener("pointerup", endDrag);
       el.removeEventListener("pointercancel", endDrag);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
       el.style.cursor = "";
-      el.style.userSelect = "";
+      document.body.style.userSelect = "";
     };
   }, []);
 

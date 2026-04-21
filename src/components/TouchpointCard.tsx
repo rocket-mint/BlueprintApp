@@ -24,36 +24,22 @@ export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteE
   const effectiveLink = override?.link ?? tp.linkUrl ?? "";
   const showImage = Boolean(effectiveImage) && !imgError;
 
-  const image = showImage ? (
+  const imageBlock = showImage ? (
     <img
       src={effectiveImage}
       alt={tp.name}
       onError={() => setImgError(true)}
       loading="lazy"
-      className="mb-2 h-16 w-full rounded-md border border-neutral-gray-200 object-cover"
+      className="mb-2 max-h-48 w-full rounded-md border border-neutral-gray-200 bg-neutral-gray-50 object-contain"
     />
   ) : null;
-
-  const imageBlock =
-    image && effectiveLink ? (
-      <a
-        href={effectiveLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block focus:outline-none focus:ring-2 focus:ring-brand-cyan-500"
-        title={`Open ${effectiveLink}`}
-      >
-        {image}
-      </a>
-    ) : (
-      image
-    );
 
   const titleOnly = !showImage && !tp.channelType && !tp.description && !tp.customNotes && !effectiveLink;
 
   return (
     <div
-      className={`group/tp relative flex h-full min-h-[80px] min-w-0 flex-col gap-1 overflow-visible rounded-[10px] border-2 bg-white p-3.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.06)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.1)] ${titleOnly ? "items-center justify-center text-center" : ""} ${isEditing ? "border-brand-cyan-500 ring-2 ring-brand-cyan-500" : "border-neutral-gray-200"}`}
+      data-tp-id={tp.id}
+      className={`group/tp relative flex h-full min-h-[80px] ${showImage ? "min-w-[260px]" : "min-w-0"} flex-col gap-1 overflow-visible rounded-[10px] border-2 bg-white p-3.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.06)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.1)] ${titleOnly ? "items-center justify-center text-center" : ""} ${isEditing ? "border-brand-cyan-500 ring-2 ring-brand-cyan-500" : "border-neutral-gray-200"}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -94,7 +80,7 @@ export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteE
           {tp.customNotes}
         </p>
       )}
-      {effectiveLink && !showImage && (
+      {effectiveLink && !showImage && !tp.ctaText && (
         <a
           href={effectiveLink}
           target="_blank"
@@ -103,6 +89,24 @@ export function TouchpointCard({ tp, override, editMode, onEditEntity, onDeleteE
           title={effectiveLink}
         >
           {effectiveLink}
+        </a>
+      )}
+
+      {/* CTA button — shown when a link + CTA text are set */}
+      {effectiveLink && tp.ctaText && (
+        <a
+          href={effectiveLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-6 flex w-full items-center justify-end gap-2 rounded-xl px-1 py-1.5 text-brand-navy-900 transition-colors hover:text-brand-cyan-500"
+        >
+          <span className="text-[14px] font-bold leading-tight">{tp.ctaText}</span>
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-current">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </span>
         </a>
       )}
 

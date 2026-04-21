@@ -6,10 +6,24 @@ interface TopNavProps {
   onCancel: () => void;
   onSaveBp: () => void;
   onDownload: () => void;
-  onHome: () => void;
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
 }
 
-export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel, onSaveBp, onDownload, onHome }: TopNavProps) {
+export function TopNav({
+  editMode,
+  onToggleEditMode,
+  onSave,
+  onCancel,
+  onSaveBp,
+  onDownload,
+  zoom,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
+}: TopNavProps) {
   return (
     <header
       className={`sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-5 transition-colors duration-200 ${
@@ -18,38 +32,44 @@ export function TopNav({ fileName, editMode, onToggleEditMode, onSave, onCancel,
           : "border-neutral-gray-200 bg-white"
       }`}
     >
-      {/* Left — logo + file name */}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <button
-          type="button"
-          onClick={onHome}
-          className="flex shrink-0 items-center gap-2 transition-opacity hover:opacity-70"
-          title="Back to home"
-        >
-          <span className={`text-[10px] font-bold uppercase tracking-[0.2em] ${editMode ? "text-brand-purple-700" : "text-brand-navy-900/50"}`}>
-            Just A
-          </span>
-          <span className={`text-sm font-semibold ${editMode ? "text-brand-purple-900" : "text-brand-navy-1000"}`}>
-            Service Blueprint
-          </span>
-        </button>
+      {/* Left spacer — balances the right action group so the tip stays centered */}
+      <div className="flex-1" />
 
-        {fileName && (
-          <>
-            <span className="text-neutral-gray-300">/</span>
-            <span className="truncate text-sm text-neutral-gray-500">{fileName}</span>
-          </>
-        )}
-
-        {editMode && (
-          <span className="ml-1 rounded-full bg-brand-purple-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-            Editing
-          </span>
-        )}
+      {/* Center — pan tip */}
+      <div className="shrink-0 text-sm text-neutral-gray-600">
+        🖐️ Hold SPACE and click-drag to pan around
       </div>
 
       {/* Right — actions */}
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex flex-1 shrink-0 items-center justify-end gap-2">
+        {/* Zoom cluster */}
+        <div className="flex items-center gap-1 rounded-md border border-neutral-gray-200 bg-white px-1 py-0.5">
+          <button
+            type="button"
+            onClick={onZoomOut}
+            aria-label="Zoom out"
+            className="rounded px-2 py-1 text-sm text-neutral-gray-700 hover:bg-neutral-gray-50"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={onZoomReset}
+            aria-label="Reset zoom"
+            className="min-w-[44px] rounded px-1 py-1 text-xs font-semibold tabular-nums text-neutral-gray-700 hover:bg-neutral-gray-50"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={onZoomIn}
+            aria-label="Zoom in"
+            className="rounded px-2 py-1 text-sm text-neutral-gray-700 hover:bg-neutral-gray-50"
+          >
+            +
+          </button>
+        </div>
+
         {editMode ? (
           <>
             <button

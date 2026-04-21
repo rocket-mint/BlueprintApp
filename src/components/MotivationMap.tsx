@@ -61,9 +61,11 @@ interface Props {
   onDragPoint?: (index: number, x: number, score: number) => void;
   onEditPoint?: (index: number) => void;
   onAddPoint?: (x: number, score: number) => void;
+  /** Passed through as data-mm-container for DOM-capture HTML export. */
+  swimlaneId?: string;
 }
 
-export function MotivationMap({ points, editMode, onDragPoint, onEditPoint, onAddPoint }: Props) {
+export function MotivationMap({ points, editMode, onDragPoint, onEditPoint, onAddPoint, swimlaneId }: Props) {
   const gradientId = useId();
   const clipId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -189,7 +191,7 @@ export function MotivationMap({ points, editMode, onDragPoint, onEditPoint, onAd
   }
 
   return (
-    <div ref={containerRef} className="relative w-full" style={{ height: MAP_HEIGHT }}>
+    <div ref={containerRef} className="relative w-full" style={{ height: MAP_HEIGHT }} data-mm-container={swimlaneId}>
       {/* Y-axis labels */}
       <div
         className="absolute left-0 top-0 flex flex-col justify-between text-right"

@@ -1,15 +1,22 @@
 // Standalone HTML exporter for the blueprint.
 //
-// Strategy:
-// 1. Capture every CSS rule from the running document (Vite injects Tailwind's
-//    JIT output as <style> tags, all same-origin, so cssRules is accessible).
-// 2. Embed Blueprint data + touchpoint media overrides as JSON globals.
-// 3. Inline a vanilla-JS viewer that re-renders the blueprint from that data.
-//    Mirrors the React section → stage-group → stage → phase-group → swimlane hierarchy.
-//    Read-only — no upload, no edit mode.
+// Strategy: DOM capture.
+// The blueprint is already rendered correctly by React in the live page.
+// We deep-clone the live DOM, replace MotivationMap SVGs with responsive
+// pre-built versions, capture all Tailwind CSS from the page stylesheets,
+// and bundle everything into a self-contained HTML file.
+//
+// Interactivity added via a small vanilla JS IIFE:
+//   - Drag-to-pan the blueprint canvas
+//   - Motivation map dot tooltips (data-mm-* attributes)
+//   - Touchpoint hover cards (data-tp-id + embedded JSON)
 
 import type { Blueprint } from "../types/blueprint";
 import type { Media } from "../components/MediaModal";
+
+// ---------------------------------------------------------------------------
+// CSS capture
+// ---------------------------------------------------------------------------
 
 function captureCss(): string {
   const out: string[] = [];
@@ -26,6 +33,10 @@ function captureCss(): string {
   return out.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
@@ -38,920 +49,152 @@ function safeJsonForScript(value: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-function downloadFileName(sourceName: string): string {
-  const base = sourceName.replace(/\.[^.]+$/, "").trim() || "service-blueprint";
-  return `${base}.html`;
-}
+// ---------------------------------------------------------------------------
+// Pre-render responsive motivation map SVG (TypeScript side, no DOM).
+// viewBox + preserveAspectRatio="none" means it scales to any container width.
+// Each dot carries data-mm-* attributes for the tooltip interaction script.
+// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Pre-render motivation map SVG at export time (TypeScript side, no DOM).
-// Each dot gets data-mm-* attributes so the viewer script can show tooltips.
-// ---------------------------------------------------------------------------
-function buildMmSvg(
+/**
+ * Builds the motivation map as a relative-positioned container with:
+ *  - An SVG for gridlines + fill + line (uses preserveAspectRatio="none" safely
+ *    because only paths/lines are inside — no circles to distort)
+ *  - Absolutely-positioned <div> dots overlaid on top, so they stay perfectly
+ *    circular regardless of container width.
+ */
+function buildMmHtml(
   points: Array<{ x: number; score: number; title?: string; description?: string }>,
-  gradientId: string,
+  _gradientId: string,
 ): string {
-  const VW = 1200, VH = 200;
-  const MLEFT = 8, MRIGHT = 16, MTOP = 20, MBOTTOM = 20;
-  const INNER_H = VH - MTOP - MBOTTOM;
-  const INNER_W = VW - MLEFT - MRIGHT;
-  const PURPLE = "#8073ff";
-  const DOT_R = 6;
-
-  const clamp = (n: number) => Math.max(0, Math.min(1, n));
-  const levels = [1.0, 0.5, 0.0]; // High, Medium, Low
-
-  const sorted = [...points].sort((a, b) => a.x - b.x);
-  const coords: Array<[number, number]> = sorted.map((p) => [
-    MLEFT + clamp(p.x) * INNER_W,
-    MTOP + (1 - clamp(p.score)) * INNER_H,
-  ]);
-
-  function catmullRomPath(pts: Array<[number, number]>): string {
-    if (pts.length === 0) return "";
-    if (pts.length === 1) return `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
-    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i - 1] ?? pts[i];
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const p3 = pts[i + 2] ?? p2;
-      const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-      const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-      const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-      const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-      d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)},${c2x.toFixed(1)} ${c2y.toFixed(1)},${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
-    }
-    return d;
-  }
-
-  const linePath = catmullRomPath(coords);
-  const baseY = MTOP + INNER_H;
-  const areaPath =
-    coords.length >= 2
-      ? `${linePath} L ${coords[coords.length - 1][0].toFixed(1)} ${baseY} L ${coords[0][0].toFixed(1)} ${baseY} Z`
-      : "";
-
-  const gridlines = levels
-    .map((v) => {
-      const y = (MTOP + (1 - v) * INNER_H).toFixed(1);
-      return `<line x1="${MLEFT}" x2="${VW - MRIGHT}" y1="${y}" y2="${y}" stroke="#e5e7eb" stroke-dasharray="4 4" stroke-width="1"/>`;
-    })
-    .join("");
-
-  const dots = sorted
-    .map((pt, i) => {
-      const cx = coords[i][0].toFixed(1);
-      const cy = coords[i][1].toFixed(1);
-      const parts = [
-        `cx="${cx}" cy="${cy}" r="${DOT_R}"`,
-        `fill="${PURPLE}" stroke="white" stroke-width="2"`,
-        `data-mm-score="${Math.round(clamp(pt.score) * 100)}"`,
-        pt.title ? `data-mm-title="${escapeHtml(pt.title)}"` : "",
-        pt.description ? `data-mm-desc="${escapeHtml(pt.description)}"` : "",
-        `style="cursor:default"`,
-      ]
-        .filter(Boolean)
-        .join(" ");
-      return `<circle ${parts}/>`;
-    })
-    .join("");
-
+  // Base64-encode the points JSON to completely avoid HTML attribute encoding issues.
+  // The interaction script decodes with atob() then JSON.parse().
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(points))));
   return (
-    `<svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none" ` +
-    `style="display:block;width:100%;height:${VH}px" role="img" aria-label="Motivation curve">` +
-    `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
-    `<stop offset="0%" stop-color="${PURPLE}" stop-opacity="0.3"/>` +
-    `<stop offset="100%" stop-color="${PURPLE}" stop-opacity="0.03"/>` +
-    `</linearGradient></defs>` +
-    gridlines +
-    (areaPath ? `<path d="${areaPath}" fill="url(#${gradientId})"/>` : "") +
-    (linePath
-      ? `<path d="${linePath}" fill="none" stroke="${PURPLE}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`
-      : "") +
-    dots +
-    `</svg>`
+    `<div data-mm-render style="position:relative;width:100%;height:200px;` +
+    `background:#eff6ff;border-radius:12px;overflow:hidden" ` +
+    `data-mm-b64="${b64}">` +
+    `</div>`
   );
 }
 
 // ---------------------------------------------------------------------------
-// Vanilla viewer. Uses string concatenation (no ${} template literals) so
-// it can be embedded inside the TypeScript template literal below without
-// conflicting with TS interpolation.
+// Interaction script — injected as a plain IIFE into the exported HTML.
+// Handles: drag-to-pan, motivation map tooltips, touchpoint hover cards.
+// Uses string concatenation to avoid conflicting with TS template literals.
 // ---------------------------------------------------------------------------
-const VIEWER_SCRIPT = `
+
+const INTERACTION_SCRIPT = `
 (function () {
-  var DATA    = window.__BLUEPRINT_DATA__;
-  var MEDIA   = window.__BLUEPRINT_MEDIA__   || {};
-  var TITLE   = window.__BLUEPRINT_TITLE__   || "Service Blueprint";
-  var MM_SVGS = window.__BLUEPRINT_MM_SVGS__ || {};
-
-  if (!DATA || !DATA.sections) {
-    document.getElementById("root").innerHTML =
-      '<div style="padding:40px;font-family:sans-serif;color:#6b7280">Blueprint data missing.</div>';
-    return;
-  }
-
-  // Layout constants — mirror src/lib/blueprintLayout.ts + BlueprintCanvas
-  var LABEL_COL_W   = 150;
-  var MIN_STAGE_W   = 180;
-  var STAGE_GAP     = 14;
-  var CARD_W        = 176;
-  var CARD_GAP      = 8;
-
-  // ── State ──
-  var modalTpId        = null;
-  var collapsedLanes   = {};
-  var sidebarRendered  = false;
-  var keyItems = [
-    { label: "Journey stage",    bg: "#0f1724", border: "" },
-    { label: "Touchpoint card",  bg: "#ffffff", border: "#d1d5db" },
-    { label: "Motivation curve", bg: "#8073ff", border: "" },
-    { label: "Callout",          bg: "#f59e0b", border: "" }
-  ];
-
-  // ── Lookups ──
-  var stageById      = {};
-  var phaseById      = {};
-  var stageGroupById = {};
-  var mmBySwimlane   = {};
-  var tpById         = {};
-
-  var i;
-  for (i = 0; i < DATA.sections.length; i++)          {}
-  for (i = 0; i < DATA.journeyStages.length; i++)     { stageById[DATA.journeyStages[i].id] = DATA.journeyStages[i]; }
-  for (i = 0; i < (DATA.phases||[]).length; i++)       { phaseById[DATA.phases[i].id] = DATA.phases[i]; }
-  for (i = 0; i < (DATA.stageGroups||[]).length; i++) { stageGroupById[DATA.stageGroups[i].id] = DATA.stageGroups[i]; }
-  for (i = 0; i < (DATA.motivationMaps||[]).length; i++){ mmBySwimlane[DATA.motivationMaps[i].swimlaneId] = DATA.motivationMaps[i]; }
-  for (i = 0; i < DATA.touchpoints.length; i++)        { tpById[DATA.touchpoints[i].id] = DATA.touchpoints[i]; }
-
-  // ── Key-section globals (called from inline oninput/onclick in key items) ──
-  window.__kc = function (ki, val) {
-    if (ki >= 0 && ki < keyItems.length) { keyItems[ki].bg = val; renderKey(); }
-  };
-  window.__kl = function (ki, val) {
-    if (ki >= 0 && ki < keyItems.length) { keyItems[ki].label = val; }
-  };
-  window.__kd = function (ki) {
-    keyItems.splice(ki, 1); renderKey();
-  };
-
-  // ── Utilities ──
   function esc(s) {
     if (s == null) return "";
     return String(s).replace(/[&<>"']/g, function (c) {
-      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
 
-  // Mirror of CalloutBadge.tsx renderMarkdown — handles bullets, bold, italic, newlines.
-  function renderMarkdown(text) {
-    if (!text) return "";
-    var lines = String(text).split("\\n");
-    var html = "";
-    var inList = false;
-    for (var li = 0; li < lines.length; li++) {
-      var line = lines[li];
-      var isBullet = line.slice(0, 2) === "- ";
-      var content = isBullet ? line.slice(2) : line;
-
-      // Inline bold / italic
-      var formatted = content
-        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-      if (isBullet) {
-        if (!inList) { html += '<ul style="margin:2px 0 2px 12px;padding:0;list-style:disc">'; inList = true; }
-        html += '<li style="margin:1px 0">' + formatted + '</li>';
-      } else {
-        if (inList) { html += '</ul>'; inList = false; }
-        if (line === "") {
-          html += '<br>';
-        } else {
-          html += '<p style="margin:1px 0;line-height:1.4">' + formatted + '</p>';
-        }
-      }
-    }
-    if (inList) html += '</ul>';
-    return html;
-  }
-
-  function sortBy(arr, key) {
-    return arr.slice().sort(function (a, b) { return (a[key] || 0) - (b[key] || 0); });
-  }
-
-  function stagesForSection(sectionId) {
-    return sortBy(DATA.journeyStages.filter(function (s) { return s.sectionId === sectionId; }), "order");
-  }
-  function swimlanesForSection(sectionId) {
-    return sortBy(DATA.swimlanes.filter(function (sl) { return sl.sectionId === sectionId; }), "order");
-  }
-  function phasesForSection(sectionId) {
-    var stageIds = stagesForSection(sectionId).map(function (s) { return s.id; });
-    return sortBy((DATA.phases || []).filter(function (p) { return stageIds.indexOf(p.stageId) >= 0; }), "order");
-  }
-
-  function phaseGid(phase) { return phase.groupId || phase.id; }
-
-  function computePhaseMinWidths(sectionId) {
-    var widths = {};
-    var sectionPhases    = phasesForSection(sectionId);
-    var sectionSwimlanes = swimlanesForSection(sectionId);
-    for (var pi = 0; pi < sectionPhases.length; pi++) {
-      var phase = sectionPhases[pi];
-      var gid   = phaseGid(phase);
-      var groupSlIds = sectionSwimlanes
-        .filter(function (sl) { return sl.phaseId === gid; })
-        .map(function (sl) { return sl.id; });
-      var maxCount = 1;
-      for (var si = 0; si < groupSlIds.length; si++) {
-        var cnt = DATA.touchpoints.filter(function (tp) {
-          return tp.phaseId === phase.id && tp.swimlaneId === groupSlIds[si];
-        }).length;
-        if (cnt > maxCount) maxCount = cnt;
-      }
-      widths[phase.id] = maxCount * CARD_W + (maxCount - 1) * CARD_GAP;
-    }
-    return widths;
-  }
-
-  // ── Grid style helpers ──
-  function gridStyle(stageCount) {
-    return "display:grid;grid-template-columns:" + LABEL_COL_W + "px repeat(" + stageCount + ",minmax(" + MIN_STAGE_W + "px,max-content));gap:" + STAGE_GAP + "px;";
-  }
-
-  function chevronSvg(open) {
-    var rot = open ? ' style="transform:rotate(90deg)"' : "";
-    return '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"' + rot + '><polyline points="3,2 7,5 3,8"/></svg>';
-  }
-
-  // ── Callout helpers ──
-  var CALLOUT_STYLES = {
-    pain_point:  { bg: "bg-semantic-error/10",   border: "border-semantic-error/30",   icon: "text-semantic-error",   text: "text-semantic-error",   sym: "\\u26a0", label: "Pain Point"  },
-    opportunity: { bg: "bg-semantic-success/10",  border: "border-semantic-success/30", icon: "text-semantic-success", text: "text-semantic-success", sym: "\\u2728", label: "Opportunity" },
-    highlight:   { bg: "bg-semantic-warning/10",  border: "border-semantic-warning/30", icon: "text-semantic-warning", text: "text-semantic-warning", sym: "\\u2605", label: "Highlight"   },
-    question:    { bg: "bg-brand-purple-500/10",  border: "border-brand-purple-500/30", icon: "text-brand-purple-500", text: "text-brand-purple-500", sym: "?",       label: "Question"    },
-    note:        { bg: "bg-neutral-gray-100",     border: "border-neutral-gray-300",    icon: "text-neutral-gray-500", text: "text-neutral-gray-600", sym: "\\u2022", label: "Note"        }
-  };
-
-  function renderCalloutBadge(c) {
-    var st = CALLOUT_STYLES[c.type] || CALLOUT_STYLES.note;
-    return ''
-      + '<div style="display:flex;width:100%;align-items:flex-start;gap:6px;border-radius:6px;border:1px solid;padding:6px;box-sizing:border-box" class="' + st.bg + ' ' + st.border + '">'
-      +   '<span style="flex-shrink:0;font-size:11px;line-height:1;margin-top:1px" class="' + st.icon + '">' + st.sym + '</span>'
-      +   '<div style="min-width:0;flex:1;word-break:break-word">'
-      +     (c.label ? '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px" class="' + st.text + '">' + esc(c.label) + '</div>' : '')
-      +     (c.title ? '<div style="font-size:12px;font-weight:500;line-height:1.3;margin-bottom:2px;color:#0f1724">' + esc(c.title) + '</div>' : '')
-      +     (c.description ? '<div style="font-size:11px;color:#4b5563">' + renderMarkdown(c.description) + '</div>' : '')
-      +   '</div>'
-      + '</div>';
-  }
-
-  function calloutsForPhase(swimlaneId, stageId, phaseId) {
-    // Single-phase callouts only (phaseIds.length === 1)
-    return (DATA.callouts || []).filter(function (c) {
-      return c.swimlaneId === swimlaneId && c.stageId === stageId
-        && c.phaseIds && c.phaseIds.length === 1 && c.phaseIds[0] === phaseId;
-    }).sort(function (a, b) { return a.order - b.order; });
-  }
-
-  function multiPhaseCallouts(swimlaneId, stageId) {
-    return (DATA.callouts || []).filter(function (c) {
-      return c.swimlaneId === swimlaneId && c.stageId === stageId
-        && c.phaseIds && c.phaseIds.length > 1;
-    }).sort(function (a, b) { return a.order - b.order; });
-  }
-
-  function spanningCallouts(swimlaneId, stageId) {
-    return (DATA.callouts || []).filter(function (c) {
-      return c.swimlaneId === swimlaneId && c.stageId === stageId
-        && (!c.phaseIds || c.phaseIds.length === 0);
-    }).sort(function (a, b) { return a.order - b.order; });
-  }
-
-  function orphanCallouts(swimlaneId, stageId) {
-    // For orphan (stage-level) swimlanes — no phase filtering
-    return (DATA.callouts || []).filter(function (c) {
-      return c.swimlaneId === swimlaneId && c.stageId === stageId;
-    }).sort(function (a, b) { return a.order - b.order; });
-  }
-
-  // ── Touchpoint card ──
-  function effectiveMedia(tp) {
-    var ov = MEDIA[tp.id] || {};
-    return { image: ov.image || tp.imageUrl || "", link: ov.link || tp.linkUrl || "" };
-  }
-
-  function renderTouchpointCard(tp) {
-    var media    = effectiveMedia(tp);
-    var hasMedia = !!(media.image || media.link || tp.customNotes || tp.hoverTitle);
-    var openAttrs = hasMedia
-      ? ' data-action="open-tp" data-id="' + esc(tp.id) + '" style="cursor:pointer"' : "";
-    var imgBlock = media.image
-      ? '<img src="' + esc(media.image) + '" alt="' + esc(tp.name) + '" loading="lazy" class="mb-2 h-16 w-full rounded-md border border-neutral-gray-200 object-cover">'
-      : "";
-    var viewHint = hasMedia
-      ? '<span class="pointer-events-none absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-white text-brand-cyan-500 opacity-0 shadow ring-1 ring-neutral-gray-200 transition-opacity group-hover/tp:opacity-100">'
-        + '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-        + '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
-        + '</svg></span>'
-      : "";
-    return ''
-      + '<div class="group/tp relative flex min-w-0 w-[176px] shrink-0 flex-col gap-1 overflow-hidden rounded-lg border border-neutral-gray-200 bg-white p-2.5 shadow-[0_2px_6px_0_rgba(15,23,36,0.05)] transition-shadow hover:shadow-[0_4px_12px_0_rgba(15,23,36,0.08)]"' + openAttrs + '>'
-      +   viewHint + imgBlock
-      +   (tp.channelType ? '<span class="text-[9px] font-semibold uppercase tracking-wider text-brand-cyan-500">' + esc(tp.channelType) + '</span>' : "")
-      +   '<div class="break-words text-[11px] font-bold leading-tight text-brand-navy-900">' + esc(tp.name) + '</div>'
-      +   (tp.description ? '<p class="break-words text-[10px] leading-snug text-neutral-gray-600">' + esc(tp.description) + '</p>' : "")
-      + '</div>';
-  }
-
-  // ── SwimlaneCell ──
-  function renderSwimlaneCell(tps, callouts) {
-    if (tps.length === 0 && callouts.length === 0) {
-      return '<div class="min-h-[60px]"></div>';
-    }
-    var calloutW = tps.length > 0 ? (tps.length * CARD_W + (tps.length - 1) * CARD_GAP) : undefined;
-    var html = '<div class="flex flex-col gap-2 overflow-visible">';
-    if (tps.length > 0) {
-      html += '<div class="flex items-stretch gap-2 overflow-visible">';
-      for (var i = 0; i < tps.length; i++) html += renderTouchpointCard(tps[i]);
-      html += '</div>';
-    }
-    if (callouts.length > 0) {
-      var wStyle = calloutW !== undefined ? ' style="width:' + calloutW + 'px"' : ' class="w-full"';
-      html += '<div' + wStyle + ' class="flex flex-col gap-1">';
-      for (var j = 0; j < callouts.length; j++) html += renderCalloutBadge(callouts[j]);
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  // ── Stage group header row ──
-  function renderStageGroupRow(stages, stageGroups, stageGroupLabel) {
-    // Build contiguous spans
-    var groupMap = {};
-    for (var gi = 0; gi < stageGroups.length; gi++) groupMap[stageGroups[gi].id] = stageGroups[gi];
-    var spans = [];
-    var cur = null;
-    for (var si = 0; si < stages.length; si++) {
-      var s  = stages[si];
-      var grp = s.stageGroupId ? (groupMap[s.stageGroupId] || null) : null;
-      var gid = grp ? grp.id : "__none__";
-      if (cur && cur.gid === gid) {
-        cur.count++;
-      } else {
-        if (cur) spans.push(cur);
-        cur = { gid: gid, group: grp, count: 1 };
-      }
-    }
-    if (cur) spans.push(cur);
-
-    var html = '<div style="display:contents">';
-    html += '<div style="grid-column:1" class="flex items-center pr-2">'
-      + '<span class="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">' + esc(stageGroupLabel || "Group") + '</span>'
-      + '</div>';
-    for (var spi = 0; spi < spans.length; spi++) {
-      var span = spans[spi];
-      if (span.group) {
-        html += '<div style="grid-column:span ' + span.count + '" class="flex items-center justify-center rounded-md bg-neutral-gray-200 px-4 py-3">'
-          + '<span class="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight text-brand-navy-1000">' + esc(span.group.name) + '</span>'
-          + '</div>';
-      } else {
-        html += '<div style="grid-column:span ' + span.count + '"></div>';
-      }
-    }
-    html += '</div>';
-    return html;
-  }
-
-  // ── Stage header row ──
-  function renderStageHeaderRow(stages, stageLabel) {
-    var html = '<div style="display:contents">';
-    html += '<div class="flex items-center pr-2">'
-      + '<span class="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">' + esc(stageLabel || "Stage") + '</span>'
-      + '</div>';
-    for (var i = 0; i < stages.length; i++) {
-      var s = stages[i];
-      var bg  = s.bgColor   || "#E5E7EB";
-      var col = s.textColor || "#0F1724";
-      html += '<div class="group flex items-center justify-center rounded-md px-4 py-3"'
-        + ' style="background-color:' + esc(bg) + ';color:' + esc(col) + '"'
-        + (s.description ? ' title="' + esc(s.description) + '"' : "") + '>'
-        + '<span class="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight">' + esc(s.name) + '</span>'
-        + '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  // ── Phase group header row (label + pills per stage) ──
-  function renderPhaseGroupHeader(groupLabel, groupPhases, stages, phaseMinWidths) {
-    var html = '<div style="display:contents">';
-    // Col 1: label
-    html += '<div class="flex items-center gap-1 pr-2 pt-3">'
-      + '<span class="whitespace-nowrap text-[14px] font-bold capitalize text-brand-navy-1000">' + esc(groupLabel || "Phase") + '</span>'
-      + '</div>';
-    // One cell per stage
-    for (var si = 0; si < stages.length; si++) {
-      var stage = stages[si];
-      var stagePhases = groupPhases.filter(function (p) { return p.stageId === stage.id; });
-      html += '<div class="flex items-stretch gap-1.5 pt-3">';
-      for (var pi = 0; pi < stagePhases.length; pi++) {
-        var phase = stagePhases[pi];
-        var bg  = phase.bgColor   || "#0F1724";
-        var col = phase.textColor || "#FFFFFF";
-        var w   = phaseMinWidths[phase.id] || CARD_W;
-        html += '<div class="flex items-center justify-center rounded-md px-4 py-3"'
-          + ' style="flex:0 0 auto;min-width:' + w + 'px;background-color:' + esc(bg) + ';color:' + esc(col) + '"'
-          + (phase.description ? ' title="' + esc(phase.description) + '"' : "") + '>'
-          + '<span class="flex-1 whitespace-nowrap text-center text-[14px] font-bold leading-tight">' + esc(phase.name) + '</span>'
-          + '</div>';
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  // ── Orphan swimlane row ──
-  function renderOrphanSwimlaneRow(sl, stages) {
-    if (collapsedLanes[sl.id]) {
-      var tpCount = DATA.touchpoints.filter(function (tp) { return tp.swimlaneId === sl.id; }).length;
-      return ''
-        + '<div style="display:contents">'
-        + '<div style="grid-column:1 / -1" class="mt-1">'
-        + '<button type="button" data-action="toggle-lane" data-id="' + esc(sl.id) + '"'
-        + ' class="flex w-full items-center gap-2 rounded-xl border border-neutral-gray-100 px-4 py-2 text-left text-neutral-gray-700 hover:bg-neutral-gray-50">'
-        + chevronSvg(false)
-        + '<span class="text-[14px] font-bold leading-tight text-brand-navy-1000">' + esc(sl.name) + '</span>'
-        + '<span class="ml-auto text-[10px] font-medium uppercase tracking-wider text-neutral-gray-500">' + tpCount + ' touchpoint' + (tpCount === 1 ? "" : "s") + '</span>'
-        + '</button></div></div>';
-    }
-
-    var html = '<div style="display:contents">';
-    // Label
-    html += '<div class="group flex items-start gap-1 pr-2 pt-3">'
-      + '<button type="button" data-action="toggle-lane" data-id="' + esc(sl.id) + '"'
-      + ' class="flex flex-1 items-start gap-1 rounded text-left hover:opacity-70">'
-      + '<span class="mt-0.5 text-neutral-gray-500">' + chevronSvg(true) + '</span>'
-      + '<span class="text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">' + esc(sl.name) + '</span>'
-      + '</button></div>';
-    // Stage cells
-    for (var si = 0; si < stages.length; si++) {
-      var stage = stages[si];
-      var tps = DATA.touchpoints.filter(function (tp) {
-        return tp.swimlaneId === sl.id && tp.stageId === stage.id && !tp.phaseId;
-      }).sort(function (a, b) { return a.order - b.order; });
-      var calls = orphanCallouts(sl.id, stage.id);
-      html += '<div class="flex flex-col gap-1 overflow-visible pt-2">' + renderSwimlaneCell(tps, calls) + '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  // ── Phase-group swimlane row ──
-  function renderPhaseGroupSwimlaneRow(sl, stages, groupPhases, phaseMinWidths) {
-    if (collapsedLanes[sl.id]) {
-      var tpCount = DATA.touchpoints.filter(function (tp) { return tp.swimlaneId === sl.id; }).length;
-      return ''
-        + '<div style="display:contents">'
-        + '<div style="grid-column:1 / -1" class="mt-1">'
-        + '<button type="button" data-action="toggle-lane" data-id="' + esc(sl.id) + '"'
-        + ' class="flex w-full items-center gap-2 rounded-xl border border-neutral-gray-100 px-4 py-2 text-left text-neutral-gray-700 hover:bg-neutral-gray-50">'
-        + chevronSvg(false)
-        + '<span class="text-[14px] font-bold leading-tight text-brand-navy-1000">' + esc(sl.name) + '</span>'
-        + '<span class="ml-auto text-[10px] font-medium uppercase tracking-wider text-neutral-gray-500">' + tpCount + ' touchpoint' + (tpCount === 1 ? "" : "s") + '</span>'
-        + '</button></div></div>';
-    }
-
-    var html = '<div style="display:contents">';
-    // Label
-    html += '<div class="group flex items-start gap-1 pr-2 pt-3">'
-      + '<button type="button" data-action="toggle-lane" data-id="' + esc(sl.id) + '"'
-      + ' class="flex flex-1 items-start gap-1 rounded text-left hover:opacity-70">'
-      + '<span class="mt-0.5 text-neutral-gray-500">' + chevronSvg(true) + '</span>'
-      + '<span class="text-[14px] font-bold capitalize leading-tight text-brand-navy-1000">' + esc(sl.name) + '</span>'
-      + '</button></div>';
-
-    // One cell per stage
-    for (var si = 0; si < stages.length; si++) {
-      var stage = stages[si];
-      var stagePhases = groupPhases.filter(function (p) { return p.stageId === stage.id; });
-
-      if (stagePhases.length === 0) {
-        html += '<div class="pt-2"></div>';
-        continue;
-      }
-
-      var spanning  = spanningCallouts(sl.id, stage.id);
-      var multiPh   = multiPhaseCallouts(sl.id, stage.id);
-
-      html += '<div class="flex min-w-0 flex-col gap-1 pt-2">';
-
-      // Sub-cells row
-      html += '<div class="flex gap-1.5">';
-      for (var pi = 0; pi < stagePhases.length; pi++) {
-        var phase = stagePhases[pi];
-        var w     = phaseMinWidths[phase.id] || CARD_W;
-        var tps   = DATA.touchpoints.filter(function (tp) {
-          return tp.swimlaneId === sl.id && tp.phaseId === phase.id;
-        }).sort(function (a, b) { return a.order - b.order; });
-        var phaseCalls = calloutsForPhase(sl.id, stage.id, phase.id);
-        html += '<div style="flex:0 0 auto;min-width:' + w + 'px" class="flex flex-col gap-1 overflow-visible">'
-          + renderSwimlaneCell(tps, phaseCalls)
-          + '</div>';
-      }
-      html += '</div>'; // sub-cells row
-
-      // Multi-phase callouts (positioned spanning strip)
-      if (multiPh.length > 0) {
-        html += '<div class="relative flex flex-col gap-1">';
-        for (var mi = 0; mi < multiPh.length; mi++) {
-          var mc = multiPh[mi];
-          var matched = mc.phaseIds || [];
-          var firstIdx = -1, lastIdx = -1;
-          for (var pi2 = 0; pi2 < stagePhases.length; pi2++) {
-            if (matched.indexOf(stagePhases[pi2].id) >= 0) {
-              if (firstIdx === -1) firstIdx = pi2;
-              lastIdx = pi2;
-            }
-          }
-          if (firstIdx === -1) continue;
-          var offsetLeft = 0;
-          for (var ki = 0; ki < firstIdx; ki++) {
-            offsetLeft += (phaseMinWidths[stagePhases[ki].id] || CARD_W) + CARD_GAP;
-          }
-          var spanWidth = 0;
-          for (var ki2 = firstIdx; ki2 <= lastIdx; ki2++) {
-            spanWidth += (phaseMinWidths[stagePhases[ki2].id] || CARD_W);
-            if (ki2 > firstIdx) spanWidth += CARD_GAP;
-          }
-          html += '<div style="margin-left:' + offsetLeft + 'px;width:' + spanWidth + 'px">'
-            + renderCalloutBadge(mc) + '</div>';
-        }
-        html += '</div>';
-      }
-
-      // Spanning callouts
-      if (spanning.length > 0) {
-        html += '<div class="flex w-full flex-col gap-1">';
-        for (var spi = 0; spi < spanning.length; spi++) html += renderCalloutBadge(spanning[spi]);
-        html += '</div>';
-      }
-
-      html += '</div>'; // stage cell
-    }
-
-    html += '</div>'; // display:contents
-    return html;
-  }
-
-  // ── Motivation map (uses pre-rendered SVGs from window.__BLUEPRINT_MM_SVGS__) ──
-  function renderMotivationSwimlane(sl, stages) {
-    var meta  = mmBySwimlane[sl.id];
-    var title = (meta && meta.title) || sl.name;
-    var preSvg = MM_SVGS[sl.id] || "";
-
-    // Y-axis labels live in the label column (not inside the SVG) so they
-    // never stretch with preserveAspectRatio="none".
-    // Values mirror React MotivationMap: High=10%, Medium=50%, Low=90%
-    var yLevels = [
-      { label: "High",   pct: 10 },
-      { label: "Medium", pct: 50 },
-      { label: "Low",    pct: 90 }
-    ];
-    var yLabels = "";
-    for (var li = 0; li < yLevels.length; li++) {
-      yLabels += '<div style="position:absolute;right:8px;top:' + yLevels[li].pct + '%;'
-        + 'transform:translateY(-50%);font-size:10px;font-weight:500;text-align:right;'
-        + 'line-height:1.2;color:#0f1724;pointer-events:none;max-width:calc(100% - 8px)">'
-        + esc(yLevels[li].label) + '</div>';
-    }
-
-    var chartLabelCell = '<div style="position:relative;padding-right:8px;padding-top:12px">'
-      + '<h3 style="text-align:right;font-size:14px;font-weight:700;line-height:1.25;color:#0f1724;margin:0 0 4px">' + esc(title) + '</h3>'
-      + yLabels + '</div>';
-
-    var chartContentCell = '<div style="grid-column:span ' + stages.length + ';min-width:0;padding-top:12px">'
-      + '<div style="overflow:hidden;border-radius:12px;border:1px solid #e5e7eb;background:#eff6ff">'
-      + (preSvg || '<div style="height:200px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#9ca3af">No data</div>')
-      + '</div></div>';
-
-    var metaRow = "";
-    if (meta && (meta.drivers || meta.triggers || meta.insights)) {
-      var tiles = "";
-      if (meta.drivers)  tiles += '<div style="border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;padding:10px"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#00b0ca">Key drivers</div><p style="margin:2px 0 0;font-size:11px;line-height:1.5;color:#374151">' + esc(meta.drivers) + '</p></div>';
-      if (meta.triggers) tiles += '<div style="border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;padding:10px"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#00b0ca">Emotional triggers</div><p style="margin:2px 0 0;font-size:11px;line-height:1.5;color:#374151">' + esc(meta.triggers) + '</p></div>';
-      if (meta.insights) tiles += '<div style="border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;padding:10px"><div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#00b0ca">Key insights</div><p style="margin:2px 0 0;font-size:11px;line-height:1.5;color:#374151">' + esc(meta.insights) + '</p></div>';
-      metaRow = '<div style="display:contents"><div></div>'
-        + '<div style="grid-column:span ' + stages.length + ';display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:8px">'
-        + tiles + '</div></div>';
-    }
-
-    return '<div style="display:contents">' + chartLabelCell + chartContentCell + '</div>' + metaRow;
-  }
-
-  // ── Section ──
-  function renderSection(section) {
-    var stages = stagesForSection(section.id);
-    if (stages.length === 0) return "";
-
-    var sectionPhases    = phasesForSection(section.id);
-    var sectionSwimlanes = swimlanesForSection(section.id);
-    var phaseMinWidths   = computePhaseMinWidths(section.id);
-    var stageGroups      = (DATA.stageGroups || []).filter(function (g) { return g.sectionId === section.id; });
-    var hasStageGroups   = stages.some(function (s) { return s.stageGroupId; });
-
-    // Build phase-to-group map
-    var phaseToGroup = {};
-    for (var pi = 0; pi < sectionPhases.length; pi++) {
-      phaseToGroup[sectionPhases[pi].id] = phaseGid(sectionPhases[pi]);
-    }
-
-    // Unique group IDs in order
-    var groupIds = [];
-    var seenGid  = {};
-    for (var pi2 = 0; pi2 < sectionPhases.length; pi2++) {
-      var gid = phaseGid(sectionPhases[pi2]);
-      if (!seenGid[gid]) { seenGid[gid] = true; groupIds.push(gid); }
-    }
-
-    // Split swimlanes: orphans vs phase-group
-    var byGroup = {};
-    var orphans = [];
-    for (var sli = 0; sli < sectionSwimlanes.length; sli++) {
-      var sl = sectionSwimlanes[sli];
-      if (sl.phaseId) {
-        var gid2 = phaseToGroup[sl.phaseId] || sl.phaseId;
-        if (!byGroup[gid2]) byGroup[gid2] = [];
-        byGroup[gid2].push(sl);
-      } else {
-        orphans.push(sl);
-      }
-    }
-
-    // Build sorted items list
-    var items = [];
-    for (var oi = 0; oi < orphans.length; oi++) {
-      items.push({ kind: "swimlane", order: orphans[oi].order, sl: orphans[oi] });
-    }
-    for (var gi = 0; gi < groupIds.length; gi++) {
-      var gid3 = groupIds[gi];
-      var gPhases = sectionPhases.filter(function (p) { return phaseGid(p) === gid3; });
-      var minOrd  = gPhases.reduce(function (m, p) { return Math.min(m, p.order); }, Infinity);
-      items.push({ kind: "group", order: minOrd, groupId: gid3, phases: gPhases });
-    }
-    items.sort(function (a, b) { return a.order - b.order; });
-
-    var html = '<section style="border-radius:20px;background:#ffffff;padding:40px 24px;box-shadow:0 2px 10px 0 rgba(15,23,36,0.05);min-width:max-content">';
-
-    // Section title
-    html += '<div style="margin-bottom:32px">'
-      + '<h2 style="margin:0;font-size:22px;font-weight:300;line-height:1.25;color:#0f1724">' + esc(section.name) + '</h2>'
-      + (section.description ? '<p style="margin:4px 0 0;font-size:14px;color:#6b7280">' + esc(section.description) + '</p>' : "")
-      + '</div>';
-
-    // Grid
-    html += '<div style="' + gridStyle(stages.length) + '">';
-
-    if (hasStageGroups) html += renderStageGroupRow(stages, stageGroups, section.stageGroupLabel);
-    html += renderStageHeaderRow(stages, section.stageLabel);
-
-    // Render items
-    for (var ii = 0; ii < items.length; ii++) {
-      var item = items[ii];
-      if (item.kind === "swimlane") {
-        if (item.sl.type === "motivation_map") {
-          html += renderMotivationSwimlane(item.sl, stages);
-        } else {
-          html += renderOrphanSwimlaneRow(item.sl, stages);
-        }
-      } else {
-        var groupPhases    = item.phases;
-        var groupSwimlanes = byGroup[item.groupId] || [];
-        var groupLabel     = (groupPhases[0] && groupPhases[0].groupLabel) || "Phase";
-        html += renderPhaseGroupHeader(groupLabel, groupPhases, stages, phaseMinWidths);
-        for (var gsi = 0; gsi < groupSwimlanes.length; gsi++) {
-          var gsl = groupSwimlanes[gsi];
-          if (gsl.type === "motivation_map") {
-            html += renderMotivationSwimlane(gsl, stages);
-          } else {
-            html += renderPhaseGroupSwimlaneRow(gsl, stages, groupPhases, phaseMinWidths);
-          }
-        }
-      }
-    }
-
-    html += '</div>'; // grid
-    html += '</section>';
-    return html;
-  }
-
-  // ── Modal ──
-  function renderModal() {
-    if (!modalTpId) return "";
-    var tp = tpById[modalTpId];
-    if (!tp) return "";
-    var stage     = stageById[tp.stageId];
-    var stageName = stage ? stage.name : "";
-    var media     = effectiveMedia(tp);
-    var imgPart   = media.image
-      ? '<img src="' + esc(media.image) + '" alt="' + esc(tp.name) + '" class="h-40 w-full rounded-lg border border-neutral-gray-200 object-cover">'
-      : '<div class="grid h-40 place-items-center rounded-lg border-2 border-dashed border-neutral-gray-300 bg-neutral-gray-50 text-sm text-neutral-gray-400">No image</div>';
-    var linkPart  = media.link
-      ? '<a href="' + esc(media.link) + '" target="_blank" rel="noopener noreferrer" class="block truncate rounded-md border border-neutral-gray-200 bg-neutral-gray-50 px-3 py-2 text-sm text-neutral-gray-700 hover:bg-neutral-gray-100">' + esc(media.link) + '</a>'
-      : "";
-    return ''
-      + '<div data-action="close-modal-bg" role="dialog" aria-modal="true" class="fixed inset-0 z-50 grid place-items-center bg-brand-navy-900/50 p-4">'
-      + '<div class="w-full max-w-md rounded-xl bg-white shadow-xl">'
-      + '<div class="flex items-center justify-between rounded-t-xl border-b-4 px-5 py-4" style="border-color:#00b0ca">'
-      + '<div>'
-      + '<div class="text-[10px] font-semibold uppercase tracking-wider" style="color:#00b0ca">Touchpoint \u00b7 ' + esc(stageName) + '</div>'
-      + '<h3 class="text-lg font-bold text-brand-navy-900">' + esc(tp.name) + '</h3>'
-      + '</div>'
-      + '<button type="button" data-action="close-modal" aria-label="Close" class="grid h-8 w-8 place-items-center rounded-md text-neutral-gray-500 hover:bg-neutral-gray-100">'
-      + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
-      + '</button>'
-      + '</div>'
-      + '<div class="flex flex-col gap-4 p-5">'
-      + imgPart + linkPart
-      + (tp.hoverTitle ? '<div><div class="text-[10px] font-semibold uppercase tracking-wider text-brand-cyan-500">Summary</div><p class="text-sm font-semibold text-brand-navy-900">' + esc(tp.hoverTitle) + '</p>' + (tp.hoverDescription ? '<p class="text-sm text-neutral-gray-700">' + esc(tp.hoverDescription) + '</p>' : "") + '</div>' : "")
-      + (tp.description && !tp.hoverTitle ? '<p class="text-sm text-neutral-gray-700">' + esc(tp.description) + '</p>' : "")
-      + (tp.customNotes ? '<div class="rounded-md bg-neutral-gray-50 p-3 text-sm text-neutral-gray-700">' + esc(tp.customNotes) + '</div>' : "")
-      + '</div>'
-      + '</div></div>';
-  }
-
-  // ── Sidebar ──
-  function renderSidebarSection(title, body) {
-    return ''
-      + '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">'
-      + '<h3 style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0f1724">' + esc(title) + '</h3>'
-      + '<div style="font-size:11px;line-height:1.6;color:rgba(15,23,36,0.7)">' + esc(body) + '</div>'
-      + '</div>';
-  }
-
-  function renderKeyHtml() {
-    var html = '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">';
-    for (var ki = 0; ki < keyItems.length; ki++) {
-      var item = keyItems[ki];
-      var bStyle = item.border ? 'border:1px solid ' + item.border + ';' : '';
-      html += '<li style="display:flex;align-items:center;gap:7px" '
-        + 'onmouseenter="this.querySelector(\'[data-xbtn]\').style.opacity=\'1\'" '
-        + 'onmouseleave="this.querySelector(\'[data-xbtn]\').style.opacity=\'0\'">';
-      // Color swatch — wrapped in label so clicking it opens the native color picker
-      html += '<label style="flex-shrink:0;cursor:pointer;display:inline-flex;position:relative" title="Click to change color">'
-        + '<span style="display:block;width:13px;height:13px;border-radius:2px;' + bStyle + 'background:' + esc(item.bg) + '"></span>'
-        + '<input type="color" value="' + esc(item.bg) + '" oninput="__kc(' + ki + ',this.value)" '
-        + 'style="position:absolute;inset:0;opacity:0;width:100%;height:100%;padding:0;border:0;cursor:pointer"></label>';
-      // Label — contenteditable, saves to state via __kl on every keystroke (no re-render)
-      html += '<span contenteditable="true" spellcheck="false" oninput="__kl(' + ki + ',this.innerText)" '
-        + 'style="flex:1;font-size:11px;color:rgba(15,23,36,0.75);outline:none;word-break:break-word">'
-        + esc(item.label) + '</span>';
-      // Delete button — hidden until row hover
-      html += '<button data-xbtn type="button" onclick="__kd(' + ki + ')" '
-        + 'style="opacity:0;transition:opacity 150ms;flex-shrink:0;background:none;border:none;cursor:pointer;'
-        + 'color:#9ca3af;font-size:17px;line-height:1;padding:0;width:16px;height:16px;'
-        + 'display:flex;align-items:center;justify-content:center" title="Remove">&times;</button>';
-      html += '</li>';
-    }
-    html += '</ul>';
-    html += '<button data-action="add-key-item" type="button" '
-      + 'style="margin-top:8px;width:100%;display:flex;align-items:center;gap:5px;background:none;'
-      + 'border:1px dashed rgba(15,23,36,0.25);border-radius:6px;padding:5px 8px;cursor:pointer;'
-      + 'font-size:11px;color:rgba(15,23,36,0.5)">'
-      + '<span style="font-size:14px;line-height:1">+</span>Add item</button>';
-    return html;
-  }
-
-  function renderKey() {
-    var el = document.getElementById("sidebar-key");
-    if (el) el.innerHTML = renderKeyHtml();
-  }
-
-  function renderSidebar() {
-    return ''
-      + '<aside style="position:sticky;top:0;z-index:10;display:flex;flex-direction:column;width:250px;flex-shrink:0;height:100vh;overflow-y:auto;border-right:1px solid rgba(15,23,36,0.1);background:#dce8f0;padding:32px 20px 24px;box-sizing:border-box">'
-      + '<div style="margin-bottom:20px">'
-      + '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.2em;color:rgba(15,23,36,0.5);margin-bottom:4px">Just A</div>'
-      + '<h2 style="margin:0;font-size:20px;font-weight:700;line-height:1.25;color:#0f1724">' + esc(TITLE) + '</h2>'
-      + '</div>'
-      + '<p style="margin:0 0 20px;font-size:12px;line-height:1.6;color:rgba(15,23,36,0.75)">The modern customer journey is composed of multiple, overlapping touchpoints and interactions that are not as clearly defined as traditional marketing funnels.</p>'
-      + renderSidebarSection("How to use", "Drag horizontally on the blueprint to pan across the journey. Click any touchpoint card to see details.")
-      + '<div style="margin-top:auto;padding-top:16px">'
-      + '<h3 style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0f1724">Key</h3>'
-      + '<div id="sidebar-key">' + renderKeyHtml() + '</div>'
-      + '</div>'
-      + '</aside>';
-  }
-
-  // ── Main render ──
-  function render() {
-    var mainHtml = ''
-      + '<div data-scroller style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-x:auto;cursor:grab">'
-      + '<header style="position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;border-bottom:1px solid #e5e7eb;background:#fff;padding:12px 24px;flex-shrink:0">'
-      + '<span style="font-size:15px;font-weight:700;color:#0f1724">' + esc(TITLE) + '</span>'
-      + '<span style="margin-left:auto;font-size:11px;color:#6b7280">Service Blueprint \u2014 Read only</span>'
-      + '</header>'
-      + '<main style="flex:1;padding:24px 32px">'
-      + '<div style="display:flex;flex-direction:column;gap:24px;min-width:max-content">';
-
-    var sections = sortBy(DATA.sections, "order");
-    for (var i = 0; i < sections.length; i++) mainHtml += renderSection(sections[i]);
-
-    mainHtml += '</div></main></div>' + renderModal();
-
-    if (!sidebarRendered) {
-      document.getElementById("root").innerHTML =
-        '<div style="display:flex;min-height:100vh">'
-        + renderSidebar()
-        + '<div id="bp-main" style="flex:1;min-width:0;display:flex;flex-direction:column">' + mainHtml + '</div>'
-        + '</div>';
-      sidebarRendered = true;
-    } else {
-      var mainEl = document.getElementById("bp-main");
-      if (mainEl) mainEl.innerHTML = mainHtml;
-    }
-  }
-
-  // ── Event delegation ──
-  document.addEventListener("click", function (e) {
-    var el = e.target.closest("[data-action]");
-    if (!el) return;
-    var action = el.getAttribute("data-action");
-    var id     = el.getAttribute("data-id");
-    if (action === "open-tp") {
-      modalTpId = id; render();
-    } else if (action === "close-modal" || (action === "close-modal-bg" && e.target === el)) {
-      modalTpId = null; render();
-    } else if (action === "toggle-lane") {
-      if (collapsedLanes[id]) delete collapsedLanes[id]; else collapsedLanes[id] = true;
-      render();
-    } else if (action === "add-key-item") {
-      keyItems.push({ label: "New item", bg: "#6b7280", border: "" });
-      renderKey();
-      setTimeout(function () {
-        var spans = document.querySelectorAll("#sidebar-key [contenteditable]");
-        if (spans.length) {
-          var last = spans[spans.length - 1];
-          last.focus();
-          var sel = window.getSelection();
-          var range = document.createRange();
-          range.selectNodeContents(last);
-          if (sel) { sel.removeAllRanges(); sel.addRange(range); }
-        }
-      }, 20);
-    }
-  });
-
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && modalTpId) { modalTpId = null; render(); }
-  });
-
-  // ── Drag-to-pan ──
+  // ── Motivation map: render paths at actual width + dot tooltips ──
   (function () {
-    var dragEl = null, startX = 0, startScroll = 0, moved = 0, capturedId = null;
-    document.addEventListener("pointerdown", function (e) {
-      if (e.button !== 0) return;
-      var t = e.target;
-      if (!t || t.closest("button,a,input,select,textarea,[data-action]")) return;
-      var scroller = t.closest("[data-scroller]");
-      if (!scroller) return;
-      dragEl = scroller; startX = e.clientX; startScroll = scroller.scrollLeft; moved = 0; capturedId = e.pointerId;
-      scroller.style.cursor = "grabbing"; scroller.style.userSelect = "none";
-      try { scroller.setPointerCapture(e.pointerId); } catch (err) {}
-    });
-    document.addEventListener("pointermove", function (e) {
-      if (!dragEl) return;
-      var dx = e.clientX - startX;
-      if (Math.abs(dx) > moved) moved = Math.abs(dx);
-      dragEl.scrollLeft = startScroll - dx;
-    });
-    function endDrag(e) {
-      if (!dragEl) return;
-      var was = dragEl;
-      dragEl.style.cursor = "grab"; dragEl.style.userSelect = "";
-      if (capturedId !== null) { try { dragEl.releasePointerCapture(capturedId); } catch (err) {} capturedId = null; }
-      dragEl = null;
-      if (moved > 5) {
-        var suppress = function (ev) { ev.stopPropagation(); ev.preventDefault(); was.removeEventListener("click", suppress, true); };
-        was.addEventListener("click", suppress, true);
-        setTimeout(function () { was.removeEventListener("click", suppress, true); }, 0);
-      }
-    }
-    document.addEventListener("pointerup", endDrag);
-    document.addEventListener("pointercancel", endDrag);
-  })();
+    var PURPLE = "#8073ff";
 
-  // ── Motivation map dot tooltips ──
-  (function () {
+    function clamp(n) { return Math.max(0, Math.min(1, n)); }
+
+    function catmullRom(pts) {
+      if (!pts.length) return "";
+      if (pts.length === 1) return "M " + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1);
+      var d = "M " + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1);
+      for (var i = 0; i < pts.length - 1; i++) {
+        var p0 = pts[i - 1] || pts[i];
+        var p1 = pts[i];
+        var p2 = pts[i + 1];
+        var p3 = pts[i + 2] || p2;
+        var c1x = p1[0] + (p2[0] - p0[0]) / 6;
+        var c1y = p1[1] + (p2[1] - p0[1]) / 6;
+        var c2x = p2[0] - (p3[0] - p1[0]) / 6;
+        var c2y = p2[1] - (p3[1] - p1[1]) / 6;
+        d += " C " + c1x.toFixed(1) + " " + c1y.toFixed(1) + "," + c2x.toFixed(1) + " " + c2y.toFixed(1) + "," + p2[0].toFixed(1) + " " + p2[1].toFixed(1);
+      }
+      return d;
+    }
+
+    function renderMm(el) {
+      // Retry until the element has a real width (layout not yet done = clientWidth 0)
+      var W = el.clientWidth;
+      if (!W) { setTimeout(function () { renderMm(el); }, 30); return; }
+
+      var b64 = el.getAttribute("data-mm-b64");
+      if (!b64) return;
+      var points;
+      try { points = JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch (e) { return; }
+      if (!points || !points.length) return;
+      var H = 200;
+      var ML = 8, MR = 16, MT = 20, MB = 20;
+      var IW = W - ML - MR;
+      var IH = H - MT - MB;
+      var DOT_D = 14;
+
+      var sorted = points.slice().sort(function (a, b) { return a.x - b.x; });
+      var coords = sorted.map(function (p) {
+        return [ML + clamp(p.x) * IW, MT + (1 - clamp(p.score)) * IH];
+      });
+
+      var gid = "mmg" + Math.random().toString(36).slice(2);
+      var linePath = catmullRom(coords);
+      var baseY = (MT + IH).toFixed(1);
+      var areaPath = coords.length >= 2
+        ? linePath + " L " + coords[coords.length - 1][0].toFixed(1) + " " + baseY + " L " + coords[0][0].toFixed(1) + " " + baseY + " Z"
+        : "";
+
+      var gridlines = [1.0, 0.5, 0.0].map(function (v) {
+        var y = (MT + (1 - v) * IH).toFixed(1);
+        return '<line x1="' + ML + '" x2="' + (W - MR) + '" y1="' + y + '" y2="' + y + '" stroke="#e5e7eb" stroke-dasharray="4 4" stroke-width="1"/>';
+      }).join("");
+
+      var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">'
+        + '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">'
+        + '<stop offset="0%" stop-color="' + PURPLE + '" stop-opacity="0.3"/>'
+        + '<stop offset="100%" stop-color="' + PURPLE + '" stop-opacity="0.03"/>'
+        + '</linearGradient></defs>'
+        + gridlines
+        + (areaPath ? '<path d="' + areaPath + '" fill="url(#' + gid + ')"/>' : "")
+        + (linePath ? '<path d="' + linePath + '" fill="none" stroke="' + PURPLE + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' : "")
+        + '</svg>';
+
+      var dots = sorted.map(function (pt, i) {
+        var lp = ((coords[i][0] / W) * 100).toFixed(3);
+        var tp = ((coords[i][1] / H) * 100).toFixed(3);
+        var score = Math.round(clamp(pt.score) * 100);
+        var da = 'data-mm-score="' + score + '"'
+          + (pt.title ? ' data-mm-title="' + esc(pt.title) + '"' : "")
+          + (pt.description ? ' data-mm-desc="' + esc(pt.description) + '"' : "");
+        return '<div ' + da + ' style="position:absolute;left:' + lp + '%;top:' + tp + '%;'
+          + 'transform:translate(-50%,-50%);width:' + DOT_D + 'px;height:' + DOT_D + 'px;'
+          + 'border-radius:50%;background:' + PURPLE + ';border:2px solid white;'
+          + 'box-shadow:0 1px 4px rgba(0,0,0,0.15);z-index:1;cursor:default;transition:transform 120ms"'
+          + ' onmouseover="this.style.transform=\\'translate(-50%,-50%) scale(1.35)\\'"'
+          + ' onmouseout="this.style.transform=\\'translate(-50%,-50%) scale(1)\\'"></div>';
+      }).join("");
+
+      el.innerHTML = svg + dots;
+    }
+
+    // Kick off rendering — each renderMm call retries until clientWidth > 0.
+    function renderAll() {
+      document.querySelectorAll("[data-mm-render]").forEach(renderMm);
+    }
+    renderAll();
+    var resizeTimer;
+    window.addEventListener("resize", function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(renderAll, 100);
+    });
+
+    // Tooltip
     var tip = null;
     function ensureTip() {
       if (!tip) {
         tip = document.createElement("div");
-        tip.style.cssText = "display:none;position:fixed;z-index:200;pointer-events:none;"
-          + "min-width:120px;border-radius:8px;border:2px solid #8073ff;background:#ffffff;"
+        tip.style.cssText = "display:none;position:fixed;z-index:9999;pointer-events:none;"
+          + "min-width:120px;border-radius:8px;border:2px solid #8073ff;background:#fff;"
           + "padding:8px 12px;box-shadow:0 4px 16px rgba(0,0,0,0.12)";
         document.body.appendChild(tip);
       }
@@ -963,12 +206,12 @@ const VIEWER_SCRIPT = `
       var score = el.getAttribute("data-mm-score");
       if (score === null) return;
       var t = ensureTip();
-      var titleVal = el.getAttribute("data-mm-title");
-      var descVal  = el.getAttribute("data-mm-desc");
+      var tv = el.getAttribute("data-mm-title");
+      var dv = el.getAttribute("data-mm-desc");
       var html = "";
-      if (titleVal) html += '<div style="font-size:13px;font-weight:700;color:#0f1724;margin-bottom:2px">' + esc(titleVal) + '</div>';
+      if (tv) html += '<div style="font-size:13px;font-weight:700;color:#0f1724;margin-bottom:2px">' + esc(tv) + '</div>';
       html += '<div style="font-size:12px;font-weight:600;color:#8073ff">' + score + '%</div>';
-      if (descVal) html += '<p style="margin:3px 0 0;font-size:11px;color:#4b5563;line-height:1.4">' + esc(descVal) + '</p>';
+      if (dv) html += '<p style="margin:3px 0 0;font-size:11px;color:#4b5563;line-height:1.4">' + esc(dv) + '</p>';
       t.innerHTML = html;
       t.style.display = "block";
     });
@@ -979,69 +222,332 @@ const VIEWER_SCRIPT = `
     });
     document.addEventListener("mouseout", function (e) {
       var el = e.target;
-      if (!el || !el.getAttribute) return;
-      if (el.getAttribute("data-mm-score") !== null && tip) tip.style.display = "none";
+      if (el && el.getAttribute && el.getAttribute("data-mm-score") !== null && tip) tip.style.display = "none";
     });
   })();
 
-  try {
-    render();
-  } catch (err) {
-    var rootEl = document.getElementById("root");
-    if (rootEl) {
-      rootEl.innerHTML = '<div style="padding:40px 32px;font-family:monospace;font-size:13px;color:#b91c1c">'
-        + '<strong>Blueprint render error</strong><br><br>'
-        + String(err)
-        + '</div>';
+  // ── Swimlane collapse ──
+  // Some sl-cells have inline display values (e.g. the callout strip uses
+  // display:grid for subgrid). Clearing style.display on expand would fall
+  // back to "block" and break layout. Cache inline display on collapse and
+  // restore it on expand.
+  var __slCollapsed = {};
+  window.__slToggle = function (btn, slId) {
+    var cells = document.querySelectorAll("[data-sl-cell]");
+    var matches = [];
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].getAttribute("data-sl-cell") === slId) matches.push(cells[i]);
     }
-    throw err;
+    if (!matches.length) return;
+    var chevron = btn.querySelector("svg");
+    if (__slCollapsed[slId]) {
+      matches.forEach(function (c) {
+        var prev = c.getAttribute("data-sl-prev-display");
+        c.style.display = prev == null ? "" : prev;
+      });
+      if (chevron) chevron.style.transform = "rotate(90deg)";
+      __slCollapsed[slId] = false;
+    } else {
+      matches.forEach(function (c) {
+        if (!c.hasAttribute("data-sl-prev-display")) {
+          c.setAttribute("data-sl-prev-display", c.style.display || "");
+        }
+        c.style.display = "none";
+      });
+      if (chevron) chevron.style.transform = "";
+      __slCollapsed[slId] = true;
+    }
+  };
+
+  // ── Touchpoint hover cards ──
+  (function () {
+    var TP = window.__BP_TP_DATA__ || {};
+    var card = null;
+    function ensureCard() {
+      if (!card) {
+        card = document.createElement("div");
+        card.style.cssText = "display:none;position:fixed;z-index:9998;pointer-events:none;"
+          + "width:200px;border-radius:8px;border:2px solid rgba(0,176,202,0.4);background:#fff;"
+          + "padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,0.12)";
+        document.body.appendChild(card);
+      }
+      return card;
+    }
+    document.addEventListener("mouseover", function (e) {
+      var el = e.target && e.target.closest ? e.target.closest("[data-tp-id]") : null;
+      if (!el) return;
+      var tp = TP[el.getAttribute("data-tp-id")];
+      if (!tp || (!tp.hoverTitle && !tp.hoverDescription)) return;
+      var c = ensureCard();
+      var html = "";
+      if (tp.hoverTitle) html += '<div style="font-size:12px;font-weight:700;color:#0f1724;line-height:1.3">' + esc(tp.hoverTitle) + '</div>';
+      if (tp.hoverDescription) html += '<p style="margin:4px 0 0;font-size:11px;line-height:1.4;color:#4b5563">' + esc(tp.hoverDescription) + '</p>';
+      c.innerHTML = html;
+      c.style.display = "block";
+      var rect = el.getBoundingClientRect();
+      c.style.left = Math.max(4, rect.left + rect.width / 2 - 100) + "px";
+      c.style.top  = (rect.top - c.offsetHeight - 8) + "px";
+    });
+    document.addEventListener("mouseout", function (e) {
+      if (!card) return;
+      var el = e.target && e.target.closest ? e.target.closest("[data-tp-id]") : null;
+      if (el) card.style.display = "none";
+    });
+  })();
+
+  // ── Drag-to-pan (both axes) ──
+  (function () {
+    var dragEl = null, startX = 0, startY = 0, startScrollX = 0, startScrollY = 0, moved = 0, capturedId = null;
+    document.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0) return;
+      var t = e.target;
+      if (!t || t.closest("button,a,input,select,textarea,label,[data-collapse-for],[data-section-collapse-for],[data-phasegroup-collapse-for],[data-zoom-ui]")) return;
+      var scroller = t.closest("[data-scroller]");
+      if (!scroller) return;
+      dragEl = scroller;
+      startX = e.clientX; startY = e.clientY;
+      startScrollX = scroller.scrollLeft; startScrollY = scroller.scrollTop;
+      moved = 0; capturedId = e.pointerId;
+      scroller.style.cursor = "grabbing"; scroller.style.userSelect = "none";
+      try { scroller.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    document.addEventListener("pointermove", function (e) {
+      if (!dragEl) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      var m = Math.max(Math.abs(dx), Math.abs(dy));
+      if (m > moved) moved = m;
+      dragEl.scrollLeft = startScrollX - dx;
+      dragEl.scrollTop  = startScrollY - dy;
+    });
+    function endDrag() {
+      if (!dragEl) return;
+      dragEl.style.cursor = "grab"; dragEl.style.userSelect = "";
+      if (capturedId !== null) { try { dragEl.releasePointerCapture(capturedId); } catch (err) {} capturedId = null; }
+      dragEl = null;
+    }
+    document.addEventListener("pointerup", endDrag);
+    document.addEventListener("pointercancel", endDrag);
+  })();
+
+  // ── Phase group collapse ──
+  // NOTE: bodies include display:contents wrappers (swimlane rows).
+  // Setting style.display = "" would clear the inline display and fall back
+  // to "block", which breaks grid layout. We cache the original inline value
+  // on first collapse and restore it on expand.
+  var __pgCollapsed = {};
+  function __pgToggle(btn, pgId) {
+    var bodies = document.querySelectorAll('[data-phasegroup-body="' + pgId + '"]');
+    if (!bodies.length) return;
+    var chevronBtn = document.querySelector('[data-phasegroup-collapse-for="' + pgId + '"]');
+    var chevron = chevronBtn ? chevronBtn.querySelector("svg") : null;
+    if (__pgCollapsed[pgId]) {
+      for (var i = 0; i < bodies.length; i++) {
+        var el = bodies[i];
+        var prev = el.getAttribute("data-pg-prev-display");
+        el.style.display = prev == null ? "" : prev;
+      }
+      if (chevron) chevron.style.transform = "";
+      __pgCollapsed[pgId] = false;
+    } else {
+      for (var i = 0; i < bodies.length; i++) {
+        var el = bodies[i];
+        if (!el.hasAttribute("data-pg-prev-display")) {
+          el.setAttribute("data-pg-prev-display", el.style.display || "");
+        }
+        el.style.display = "none";
+      }
+      if (chevron) chevron.style.transform = "rotate(-90deg)";
+      __pgCollapsed[pgId] = true;
+    }
   }
+
+  // ── Collapse buttons (event delegation) ──
+  // Section chevrons are intentionally NOT wired in the export — sections
+  // are always expanded in the read-only view.
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+
+    // Swallow clicks on the section chevron so it doesn't feel interactive.
+    var secBtn = t.closest("[data-section-collapse-for]");
+    if (secBtn) { e.preventDefault(); e.stopPropagation(); return; }
+
+    var pgBtn = t.closest("[data-phasegroup-collapse-for]");
+    if (pgBtn) {
+      var pgId = pgBtn.getAttribute("data-phasegroup-collapse-for");
+      if (pgId) { e.preventDefault(); e.stopPropagation(); __pgToggle(pgBtn, pgId); }
+      return;
+    }
+
+    var slBtn = t.closest("[data-collapse-for]");
+    if (slBtn) {
+      var slId = slBtn.getAttribute("data-collapse-for");
+      if (slId) { e.preventDefault(); e.stopPropagation(); window.__slToggle(slBtn, slId); }
+      return;
+    }
+  });
+
+  // ── Zoom ──
+  (function () {
+    var LEVELS = [0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
+    var z = 1;
+    var root = document.getElementById("bp-zoom-root");
+    var label = document.querySelector("[data-zoom-reset]");
+    function apply() {
+      if (root) root.style.zoom = z;
+      if (label) label.textContent = Math.round(z * 100) + "%";
+    }
+    function stepUp() {
+      for (var i = 0; i < LEVELS.length; i++) if (LEVELS[i] > z + 0.001) { z = LEVELS[i]; break; }
+      apply();
+    }
+    function stepDown() {
+      for (var i = LEVELS.length - 1; i >= 0; i--) if (LEVELS[i] < z - 0.001) { z = LEVELS[i]; break; }
+      apply();
+    }
+    function reset() { z = 1; apply(); }
+    var btnIn = document.querySelector("[data-zoom-in]");
+    var btnOut = document.querySelector("[data-zoom-out]");
+    var btnReset = document.querySelector("[data-zoom-reset]");
+    if (btnIn) btnIn.addEventListener("click", stepUp);
+    if (btnOut) btnOut.addEventListener("click", stepDown);
+    if (btnReset) btnReset.addEventListener("click", reset);
+    document.addEventListener("keydown", function (e) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "=" || e.key === "+") { e.preventDefault(); stepUp(); }
+      else if (e.key === "-") { e.preventDefault(); stepDown(); }
+      else if (e.key === "0") { e.preventDefault(); reset(); }
+    });
+  })();
 })();
 `;
 
+// ---------------------------------------------------------------------------
+// Main export function
+// ---------------------------------------------------------------------------
+
 export function downloadBlueprintHtml(
   data: Blueprint,
-  mediaOverrides: Record<string, Media>,
+  _mediaOverrides: Record<string, Media>,
   fileName: string,
 ): void {
-  const css   = captureCss();
-  const title = escapeHtml(fileName || "Service Blueprint");
+  // ── 1. Find live DOM elements ──
+  const mainEl = document.getElementById("bp-export-main");
+  const sidebarEl = document.querySelector<HTMLElement>('aside[aria-label="Journey map context"]');
 
-  // Pre-render motivation map SVGs at export time so they don't stretch
-  // and can carry interactive tooltip attributes.
-  const mmSvgs: Record<string, string> = {};
-  for (const mm of data.motivationMaps ?? []) {
-    const gradientId = `mmg_${mm.swimlaneId.replace(/[^a-z0-9]/gi, "_")}`;
-    mmSvgs[mm.swimlaneId] = buildMmSvg(mm.points ?? [], gradientId);
+  if (!mainEl) {
+    // Blueprint not mounted — shouldn't happen in normal flow
+    alert("Export failed: blueprint not found. Please try again.");
+    return;
   }
 
+  // ── 2. Capture CSS from the running page ──
+  const css = captureCss();
+  const safeTitle = escapeHtml(fileName || "Service Blueprint");
+
+  // ── 3. Pre-build responsive MotivationMap SVGs ──
+  const mmHtmls: Record<string, string> = {};
+  for (const mm of data.motivationMaps ?? []) {
+    const gradientId = `mmg_${mm.swimlaneId.replace(/[^a-z0-9]/gi, "_")}`;
+    mmHtmls[mm.swimlaneId] = buildMmHtml(mm.points ?? [], gradientId);
+  }
+
+  // ── 4. Clone main content and patch MotivationMaps + collapse buttons ──
+  const mainClone = mainEl.cloneNode(true) as HTMLElement;
+  // Strip the app's current zoom so the exported viewer starts at 100%.
+  mainClone.style.zoom = "";
+
+  // Replace live MotivationMap containers with a data-mm-render placeholder.
+  // The interaction script reads data-mm-b64 and renders at actual container width.
+  mainClone.querySelectorAll<HTMLElement>("[data-mm-container]").forEach((el) => {
+    const swimlaneId = el.getAttribute("data-mm-container");
+    if (!swimlaneId || !mmHtmls[swimlaneId]) return;
+    el.style.height = "200px";
+    el.style.position = "relative";
+    el.innerHTML = mmHtmls[swimlaneId];
+  });
+
+  // Collapse buttons are wired via document-level click delegation in the
+  // interaction script — no per-button inline onclick needed.
+
+  // Section chevrons are not interactive in the export. Strip the chevron
+  // icon from section title buttons so it doesn't suggest the section can
+  // be collapsed, and reset the cursor to default.
+  mainClone.querySelectorAll<HTMLElement>("[data-section-collapse-for]").forEach((btn) => {
+    const svg = btn.querySelector("svg");
+    const chevronWrapper = svg?.parentElement;
+    if (chevronWrapper && chevronWrapper !== btn) {
+      chevronWrapper.remove();
+    } else if (svg) {
+      svg.remove();
+    }
+    btn.style.cursor = "default";
+  });
+
+  // ── 5. Clone sidebar ──
+  const sidebarHtml = sidebarEl
+    ? (sidebarEl.cloneNode(true) as HTMLElement).outerHTML
+    : "";
+
+  // ── 6. Build touchpoint hover-card data ──
+  const tpData: Record<string, { hoverTitle?: string; hoverDescription?: string }> = {};
+  for (const tp of data.touchpoints ?? []) {
+    if (tp.hoverTitle || tp.hoverDescription) {
+      tpData[tp.id] = { hoverTitle: tp.hoverTitle, hoverDescription: tp.hoverDescription };
+    }
+  }
+
+  // ── 7. Assemble HTML ──
   const html =
     "<!DOCTYPE html>\n" +
     '<html lang="en">\n' +
     "<head>\n" +
     '  <meta charset="UTF-8" />\n' +
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n' +
-    "  <title>Service Blueprint \u2014 " + title + "</title>\n" +
+    `  <title>Service Blueprint \u2014 ${safeTitle}</title>\n` +
     "  <style>\n" + css + "\n  </style>\n" +
-    "  <style>*{box-sizing:border-box}body{margin:0;padding:0;background:#f5f0eb}[data-scroller]{cursor:grab}[data-scroller]:active{cursor:grabbing}</style>\n" +
+    "  <style>*{box-sizing:border-box}body{margin:0;padding:0;overflow:hidden;background:#f5f0eb}" +
+    "[data-scroller]{cursor:grab}[data-scroller]:active{cursor:grabbing}</style>\n" +
     "</head>\n" +
-    '<body style="margin:0;padding:0;background:#f5f0eb">\n' +
-    '  <div id="root"></div>\n' +
-    "  <script>\n" +
-    "    window.__BLUEPRINT_DATA__    = " + safeJsonForScript(data) + ";\n" +
-    "    window.__BLUEPRINT_MEDIA__   = " + safeJsonForScript(mediaOverrides) + ";\n" +
-    "    window.__BLUEPRINT_TITLE__   = " + safeJsonForScript(fileName || "Service Blueprint") + ";\n" +
-    "    window.__BLUEPRINT_MM_SVGS__ = " + safeJsonForScript(mmSvgs) + ";\n" +
-    "  </script>\n" +
-    "  <script>" + VIEWER_SCRIPT + "</script>\n" +
+    '<body>\n' +
+    '  <div style="display:flex;height:100vh;overflow:hidden;background:#f5f0eb">\n' +
+    (sidebarHtml ? "    " + sidebarHtml + "\n" : "") +
+    '    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">\n' +
+    '      <div data-scroller style="flex:1;min-width:0;overflow:auto;cursor:grab">\n' +
+    '        <div id="bp-zoom-root" style="zoom:1">\n' +
+    "          " + mainClone.innerHTML + "\n" +
+    "        </div>\n" +
+    "      </div>\n" +
+    "    </div>\n" +
+    "  </div>\n" +
+    '  <div data-zoom-ui style="position:fixed;bottom:16px;right:16px;z-index:9997;' +
+    "display:flex;align-items:center;gap:2px;background:#fff;border:1px solid #e5e7eb;" +
+    "border-radius:8px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.08);" +
+    'font-family:system-ui,sans-serif">\n' +
+    '    <button type="button" data-zoom-out aria-label="Zoom out" ' +
+    'style="border:0;background:transparent;padding:4px 10px;font-size:16px;cursor:pointer;border-radius:4px">−</button>\n' +
+    '    <button type="button" data-zoom-reset aria-label="Reset zoom" ' +
+    'style="border:0;background:transparent;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;min-width:48px;font-variant-numeric:tabular-nums">100%</button>\n' +
+    '    <button type="button" data-zoom-in aria-label="Zoom in" ' +
+    'style="border:0;background:transparent;padding:4px 10px;font-size:16px;cursor:pointer;border-radius:4px">+</button>\n' +
+    "  </div>\n" +
+    '  <script>window.__BP_TP_DATA__ = ' + safeJsonForScript(tpData) + ';</script>\n' +
+    "  <script>" + INTERACTION_SCRIPT + "</script>\n" +
     "</body>\n" +
     "</html>\n";
+
+  // ── 8. Trigger download ──
+  const safeName = (fileName || "blueprint")
+    .replace(/\.html$/i, "")
+    .replace(/[/\\?%*:|"<>]/g, "_")
+    .trim() || "blueprint";
 
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href = url;
-  a.download = downloadFileName(fileName);
+  a.download = safeName + ".html";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

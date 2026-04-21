@@ -6,7 +6,17 @@
       "Bash(npx tsc:*)",
       "Bash(git add:*)",
       "Bash(git commit -m ':*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm run:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm install:*)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(node -e ':*)",
+      "Bash(node --check viewer_test.js)",
+      "Bash(rm viewer_test.js)",
+      "Bash(ls *.toml *.json vercel.json netlify.toml .vercel)",
+      "Bash(ls *.json *.yaml *.yml .github)",
+      "Bash(ls tailwind.config*)"
     ]
   }
 }

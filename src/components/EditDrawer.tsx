@@ -31,23 +31,47 @@ const BG_PRESETS = [
   "#374151", "#6B7280", "#D1D5DB", "#F3F4F6", "#FFFFFF",
 ];
 const TEXT_PRESETS = ["#FFFFFF", "#F9FAFB", "#0F1724", "#000000"];
+// Softer tones suited to callout backgrounds (lighter fills)
+const CALLOUT_BG_PRESETS = [
+  "#FFFFFF", "#F9FAFB", "#FEF3C7", "#FEE2E2", "#DCFCE7",
+  "#DBEAFE", "#EDE9FE", "#FCE7F3", "#E0F2FE", "#F3F4F6",
+];
+// Outline-oriented palette — saturated enough to read as a border
+const CALLOUT_BORDER_PRESETS = [
+  "#0F1724", "#DC2626", "#EA580C", "#D97706", "#059669",
+  "#0891B2", "#2563EB", "#7C3AED", "#DB2777", "#6B7280",
+];
 
 function ColorPicker({
   label,
   value,
   onChange,
   presets,
+  allowClear = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   presets: string[];
+  allowClear?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">
-        {label}
-      </label>
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-semibold uppercase tracking-wider text-neutral-gray-500">
+          {label}
+        </label>
+        {allowClear && value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="text-[11px] text-neutral-gray-500 underline decoration-dotted hover:text-brand-cyan-500"
+            title="Reset to default"
+          >
+            Clear
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {presets.map((color) => (
           <button
@@ -610,6 +634,7 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
   const [channelType, setChannelType] = useState(existing?.channelType ?? "");
   const [imageUrl, setImageUrl] = useState(existing?.imageUrl ?? "");
   const [linkUrl, setLinkUrl] = useState(existing?.linkUrl ?? "");
+  const [ctaText, setCtaText] = useState(existing?.ctaText ?? "");
   const [customNotes, setCustomNotes] = useState(existing?.customNotes ?? "");
   const [hoverTitle, setHoverTitle] = useState(existing?.hoverTitle ?? "");
   const [hoverDescription, setHoverDescription] = useState(existing?.hoverDescription ?? "");
@@ -626,6 +651,7 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
       linkUrl: linkUrl.trim() || undefined,
+      ctaText: ctaText.trim() || undefined,
       customNotes: customNotes.trim() || undefined,
       hoverTitle: hoverTitle.trim() || undefined,
       hoverDescription: hoverDescription.trim() || undefined,
@@ -683,6 +709,9 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
           <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
           <Field label="Image"><ImageUpload value={imageUrl} onChange={setImageUrl} /></Field>
           <Field label="Hyperlink"><TextInput value={linkUrl} onChange={setLinkUrl} placeholder="https://example.com" /></Field>
+          {linkUrl.trim() && (
+            <Field label="CTA Button Text"><TextInput value={ctaText} onChange={setCtaText} placeholder="e.g. View Prototype" /></Field>
+          )}
           <Field label="Quotes"><TextArea value={customNotes} onChange={setCustomNotes} placeholder="Custom notes" rows={2} /></Field>
         </>
       )}
@@ -722,7 +751,10 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
   const [label, setLabel] = useState(existing?.label ?? "");
   const [stageId, setStageId] = useState(existing?.stageId ?? parentStage ?? bp.journeyStages[0]?.id ?? "");
   const [swimlaneId] = useState(existing?.swimlaneId ?? parentSwimlane ?? "");
+  const [showStageTitle, setShowStageTitle] = useState(existing?.showStageTitle ?? true);
   const [phaseIds, setPhaseIds] = useState<string[]>(existing?.phaseIds ?? []);
+  const [bgColor, setBgColor] = useState(existing?.bgColor ?? "");
+  const [borderColor, setBorderColor] = useState(existing?.borderColor ?? "");
 
   // If the swimlane is a phase-group lane, find available phases for current stage + group
   const swimlane = bp.swimlanes.find((s) => s.id === swimlaneId);
@@ -745,10 +777,10 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
       const newId = slugify(title) || id;
       dispatch({
         type: "ADD_CALLOUT",
-        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, label: label.trim() || undefined, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, order: bp.callouts.length + 1 } as Callout,
+        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, label: label.trim() || undefined, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, showStageTitle: showStageTitle === false ? false : undefined, bgColor: bgColor || undefined, borderColor: borderColor || undefined, order: bp.callouts.length + 1 } as Callout,
       });
     } else {
-      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, label: label.trim() || undefined, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds } });
+      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, label: label.trim() || undefined, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds, showStageTitle: showStageTitle === false ? false : undefined, bgColor: bgColor || undefined, borderColor: borderColor || undefined } });
     }
     onClose();
   };
@@ -799,6 +831,17 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
       <Field label="Description">
         <MarkdownEditor value={description} onChange={setDescription} placeholder="Supports **bold**, *italic*, and - bullet lists" />
       </Field>
+      <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 hover:bg-neutral-gray-50">
+        <input
+          type="checkbox"
+          className="accent-brand-cyan-500"
+          checked={showStageTitle}
+          onChange={(e) => setShowStageTitle(e.target.checked)}
+        />
+        <span className="text-[13px] text-brand-navy-900">Show stage title above callouts</span>
+      </label>
+      <ColorPicker label="Background colour" value={bgColor} onChange={setBgColor} presets={CALLOUT_BG_PRESETS} allowClear />
+      <ColorPicker label="Outline colour" value={borderColor} onChange={setBorderColor} presets={CALLOUT_BORDER_PRESETS} allowClear />
       <SaveButton onSave={save} disabled={false} />
     </div>
   );
