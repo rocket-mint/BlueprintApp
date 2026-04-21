@@ -179,6 +179,33 @@ export interface MotivationMap {
 }
 
 // ---------------------------------------------------------------------------
+// SidebarKeyItem — single entry in the Key legend
+// ---------------------------------------------------------------------------
+export interface SidebarKeyItem {
+  label: string;
+  /** Hex color string for the swatch fill. */
+  bg: string;
+  /** Hex color string for the swatch border. Empty string for no border. */
+  border: string;
+}
+
+// ---------------------------------------------------------------------------
+// SidebarConfig — editable sidebar content saved per-file
+// ---------------------------------------------------------------------------
+export interface SidebarConfig {
+  /** Optional logo image (data URL or remote URL). Shown at top of sidebar. */
+  logo?: string;
+  /** Sidebar title (e.g. "Future Journey Map"). */
+  title?: string;
+  /** Intro paragraph — rich HTML (bold, italic, bullet lists). */
+  intro?: string;
+  /** How-to-use paragraph — rich HTML. */
+  howToUse?: string;
+  /** Key legend items. */
+  keyItems?: SidebarKeyItem[];
+}
+
+// ---------------------------------------------------------------------------
 // Blueprint — complete data structure
 // ---------------------------------------------------------------------------
 export interface Blueprint {
@@ -190,6 +217,8 @@ export interface Blueprint {
   touchpoints: Touchpoint[];
   callouts: Callout[];
   motivationMaps: MotivationMap[];
+  /** Sidebar content (title, intro, how-to-use, key legend, logo). */
+  sidebar?: SidebarConfig;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,16 +1,14 @@
 // Always-visible left sidebar. Sticky 250px column inside the top-level flex
 // row in App.tsx, scrolls with the page until pinned to top:0 of the viewport.
 import { useEffect, useRef, useState } from "react";
+import type { SidebarKeyItem } from "../types/blueprint";
+import { useBlueprint } from "../hooks/useBlueprint";
 
 interface SidebarProps {
   editMode?: boolean;
 }
 
-interface KeyItem {
-  label: string;
-  bg: string;    // hex
-  border: string; // hex or ""
-}
+type KeyItem = SidebarKeyItem;
 
 const DEFAULTS = {
   title: "Future Journey Map",
@@ -192,17 +190,108 @@ function KeySwatch({
   );
 }
 
+/** Logo slot shown at the top of the sidebar. In edit mode, lets user
+ *  upload or remove an image. In view mode, shows the image if set, else
+ *  nothing. Constrained to sidebar width via max-w-full + max-h-20. */
+function LogoEditor({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = (file: File) => {
+    setError(null);
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Logo must be under 5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") onChange(reader.result);
+    };
+    reader.onerror = () => setError("Failed to read file.");
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="mb-4">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = ""; // allow re-selecting same file
+        }}
+      />
+      {value ? (
+        <div className="group relative">
+          <img
+            src={value}
+            alt=""
+            className="block max-h-20 w-auto max-w-full cursor-pointer rounded object-contain"
+            onClick={() => fileInputRef.current?.click()}
+            title="Click to replace logo"
+          />
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            title="Remove logo"
+            className="absolute right-0 top-0 grid h-5 w-5 -translate-y-1/2 translate-x-1/2 place-items-center rounded-full bg-white text-neutral-gray-500 shadow ring-1 ring-neutral-gray-200 opacity-0 transition-opacity hover:text-semantic-error group-hover:opacity-100"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-brand-navy-900/25 px-2 py-3 text-[11px] text-brand-navy-900/50 transition-colors hover:border-brand-purple-400 hover:text-brand-purple-500"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          Add logo
+        </button>
+      )}
+      {error && (
+        <p className="mt-1 text-[10px] text-semantic-error">{error}</p>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar({ editMode }: SidebarProps) {
-  // Committed ("saved") values — what view mode shows.
-  const [title, setTitle]     = useState(DEFAULTS.title);
-  const [intro, setIntro]     = useState(DEFAULTS.intro);
-  const [howToUse, setHowToUse] = useState(DEFAULTS.howToUse);
-  const [keyItems, setKeyItems] = useState<KeyItem[]>(DEFAULT_KEY_ITEMS);
+  const { state, dispatch } = useBlueprint();
+  const sidebarCfg = state.blueprint?.sidebar;
+
+  // Committed ("saved") values — what view mode shows. Sourced from bp.sidebar
+  // with falls back to defaults so files saved before this field show sensibly.
+  const title = sidebarCfg?.title ?? DEFAULTS.title;
+  const intro = sidebarCfg?.intro ?? DEFAULTS.intro;
+  const howToUse = sidebarCfg?.howToUse ?? DEFAULTS.howToUse;
+  const keyItems = sidebarCfg?.keyItems ?? DEFAULT_KEY_ITEMS;
+  const logo = sidebarCfg?.logo;
 
   // Draft values — what the edit mode inputs bind to. Seeded from committed
   // values whenever the user enters edit mode. Committed on "Save changes".
   const [draftTitle, setDraftTitle] = useState(title);
   const [draftKeyItems, setDraftKeyItems] = useState<KeyItem[]>(keyItems);
+  const [draftLogo, setDraftLogo] = useState<string | undefined>(logo);
   const introRef = useRef<RichTextHandle | null>(null);
   const howToUseRef = useRef<RichTextHandle | null>(null);
   // Bump this key whenever we enter edit mode — forces RichTextEditor to
@@ -214,6 +303,7 @@ export function Sidebar({ editMode }: SidebarProps) {
     if (editMode) {
       setDraftTitle(title);
       setDraftKeyItems(keyItems);
+      setDraftLogo(logo);
       setEditSessionKey((k) => k + 1);
       setJustSaved(false);
     }
@@ -233,10 +323,16 @@ export function Sidebar({ editMode }: SidebarProps) {
   }
 
   function saveChanges() {
-    setTitle(draftTitle);
-    setIntro(introRef.current?.getHtml() ?? intro);
-    setHowToUse(howToUseRef.current?.getHtml() ?? howToUse);
-    setKeyItems(draftKeyItems);
+    dispatch({
+      type: "UPDATE_SIDEBAR",
+      changes: {
+        title: draftTitle,
+        intro: introRef.current?.getHtml() ?? intro,
+        howToUse: howToUseRef.current?.getHtml() ?? howToUse,
+        keyItems: draftKeyItems,
+        logo: draftLogo,
+      },
+    });
     setJustSaved(true);
     window.setTimeout(() => setJustSaved(false), 1500);
   }
@@ -247,11 +343,21 @@ export function Sidebar({ editMode }: SidebarProps) {
       aria-label="Journey map context"
       className="sticky top-0 z-10 flex h-full w-[250px] shrink-0 flex-col self-start overflow-y-auto border-r border-brand-navy-900/10 bg-brand-blue-100 px-5 pb-6 pt-8"
     >
-      {/* Brand + title */}
+      {/* Logo slot */}
+      {editMode ? (
+        <LogoEditor value={draftLogo} onChange={setDraftLogo} />
+      ) : (
+        logo && (
+          <img
+            src={logo}
+            alt=""
+            className="mb-4 block max-h-20 w-auto max-w-full object-contain"
+          />
+        )
+      )}
+
+      {/* Title */}
       <div className="mb-5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-navy-900/60">
-          Just A
-        </div>
         {editMode ? (
           <EditableText
             value={draftTitle}

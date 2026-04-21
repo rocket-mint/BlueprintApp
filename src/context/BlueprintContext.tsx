@@ -9,6 +9,7 @@ import type {
   Callout,
   MotivationMap,
   StageGroup,
+  SidebarConfig,
 } from "../types/blueprint";
 import type { Media } from "../components/MediaModal";
 import { createEmptyBlueprint } from "../utils/dataUtils";
@@ -94,6 +95,8 @@ type Action =
   | { type: "ADD_MOTIVATION_MAP"; motivationMap: MotivationMap }
   | { type: "UPDATE_MOTIVATION_MAP"; id: string; changes: Partial<Omit<MotivationMap, "id">> }
   | { type: "DELETE_MOTIVATION_MAP"; id: string }
+  // Sidebar config
+  | { type: "UPDATE_SIDEBAR"; changes: Partial<SidebarConfig> }
   // Batch reorder (used by drag-to-reorder)
   | { type: "BATCH_REORDER"; swimlaneOrders?: Array<{ id: string; order: number }>; phaseOrders?: Array<{ id: string; order: number }> }
   // UI state
@@ -272,6 +275,15 @@ function reducer(state: BlueprintState, action: Action): BlueprintState {
     case "DELETE_MOTIVATION_MAP": {
       const bp = ensureBp(state.blueprint);
       return { ...state, blueprint: { ...bp, motivationMaps: deleteFromList(bp.motivationMaps, action.id) } };
+    }
+
+    // --- Sidebar ---
+    case "UPDATE_SIDEBAR": {
+      const bp = ensureBp(state.blueprint);
+      return {
+        ...state,
+        blueprint: { ...bp, sidebar: { ...(bp.sidebar ?? {}), ...action.changes } },
+      };
     }
 
     // --- Batch reorder ---
