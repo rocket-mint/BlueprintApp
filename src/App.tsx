@@ -87,7 +87,7 @@ function AppContent() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar editMode={editMode} />
 
-        <main ref={dragRef} className="flex-1 overflow-auto">
+        <main ref={dragRef} id="bp-export-main" className="flex-1 overflow-auto">
           <div className="w-max min-w-full px-4 py-4 sm:px-6">
             {blueprint && (
               <ErrorBoundary>

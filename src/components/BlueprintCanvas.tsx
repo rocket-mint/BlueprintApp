@@ -102,55 +102,6 @@ function touchpointsForColumn(
   return result.sort((a, b) => a.order - b.order);
 }
 
-function calloutsForColumn(
-  callouts: Callout[],
-  swimlaneId: string,
-  col: GridColumn,
-  phaseId?: string,
-): Callout[] {
-  const result: Callout[] = [];
-  for (const c of callouts) {
-    if (c.swimlaneId !== swimlaneId) continue;
-    if (phaseId) {
-      if (c.stageId !== col.stageId) continue;
-      // Only single-phase-specific callouts go inside the sub-cell.
-      // Multi-phase callouts (phaseIds.length > 1) are rendered as a spanning strip below.
-      // Spanning callouts (phaseIds absent/empty) are also rendered separately below all sub-cells.
-      const ids = c.phaseIds;
-      if (ids && ids.length === 1 && ids.includes(phaseId)) result.push(c);
-    } else {
-      // Orphan swimlane cell: match by stageId, no phase filter
-      if (c.stageId === col.stageId) result.push(c);
-    }
-  }
-  return result.sort((a, b) => a.order - b.order);
-}
-
-/** Callouts with no specific phaseIds that span ALL phases of a stage in a phase-group lane. */
-function spanningCalloutsFor(callouts: Callout[], swimlaneId: string, stageId: string): Callout[] {
-  return callouts
-    .filter(
-      (c) =>
-        c.swimlaneId === swimlaneId &&
-        c.stageId === stageId &&
-        (!c.phaseIds || c.phaseIds.length === 0),
-    )
-    .sort((a, b) => a.order - b.order);
-}
-
-/** Callouts that target 2+ specific phases — rendered as a single spanning strip below sub-cells. */
-function multiPhaseCalloutsFor(callouts: Callout[], swimlaneId: string, stageId: string): Callout[] {
-  return callouts
-    .filter(
-      (c) =>
-        c.swimlaneId === swimlaneId &&
-        c.stageId === stageId &&
-        c.phaseIds != null &&
-        c.phaseIds.length > 1,
-    )
-    .sort((a, b) => a.order - b.order);
-}
-
 // ---------------------------------------------------------------------------
 // Drag types
 // ---------------------------------------------------------------------------
@@ -546,6 +497,7 @@ function SectionCard({
         phaseMinWidths={phaseMinWidths}
         editingEntityId={editingEntityId}
         rowHasTouchpoints={rowHasTouchpoints}
+        stages={sectionStages}
       />
     );
   }
@@ -942,6 +894,7 @@ function MomentsGridRow({
   phaseMinWidths,
   editingEntityId,
   rowHasTouchpoints,
+  stages,
 }: {
   swimlane: Swimlane;
   gridColumns: GridColumn[];
@@ -962,9 +915,11 @@ function MomentsGridRow({
   editingEntityId?: string | null;
   /** True if any column in this swimlane row has at least one touchpoint. */
   rowHasTouchpoints: boolean;
+  /** Stage list used to label callout groups in the callout strip. */
+  stages: JourneyStage[];
 }) {
   return (
-    <div style={{ display: "contents" }}>
+    <div style={{ display: "contents" }} data-sl-row={swimlane.id}>
       <div
         className={[
           "group flex items-start justify-end gap-1 pr-2 pt-3 rounded-md transition-all duration-700",
@@ -983,6 +938,7 @@ function MomentsGridRow({
         <button
           type="button"
           onClick={onToggleCollapse}
+          data-collapse-for={swimlane.id}
           title={`Collapse ${swimlane.name}`}
           className="flex flex-1 items-start justify-end gap-1 rounded text-right transition-opacity hover:opacity-70"
         >
@@ -1004,32 +960,15 @@ function MomentsGridRow({
         const stagePhases = groupPhases?.filter((p) => p.stageId === col.stageId);
 
         if (stagePhases && stagePhases.length > 0) {
-          const PHASE_GAP = 6; // matches gap-1.5
-
           // Collect all touchpoints across phases into one flat row
           const allPhaseTouchpoints = stagePhases.flatMap((phase) =>
             touchpointsForColumn(touchpoints, swimlane.id, col, phase.id),
           );
 
-          // Collect all callouts: single-phase, multi-phase, and spanning
-          const singlePhaseCallouts = stagePhases.flatMap((phase) =>
-            calloutsForColumn(callouts, swimlane.id, col, phase.id),
-          );
-          const multiPhase = multiPhaseCalloutsFor(callouts, swimlane.id, col.stageId);
-          const spanning = spanningCalloutsFor(callouts, swimlane.id, col.stageId);
-          const allCallouts = [...singlePhaseCallouts, ...multiPhase, ...spanning];
-
-          // Compute total width of all phases for spanning callouts
-          let totalPhaseWidth = 0;
-          for (let k = 0; k < stagePhases.length; k++) {
-            totalPhaseWidth += phaseMinWidths?.get(stagePhases[k].id) ?? 176;
-            if (k > 0) totalPhaseWidth += PHASE_GAP;
-          }
-
           return (
-            <div key={i} className="flex min-w-0 flex-col gap-2 pt-2">
+            <div key={i} data-sl-cell={swimlane.id} className="flex min-w-0 flex-col gap-2 pt-2">
               {/* Touchpoints — grouped by phase, + button after each phase's last touchpoint */}
-              <div className="flex items-stretch gap-2 overflow-visible">
+              <div className="flex items-stretch justify-center gap-2 overflow-visible">
                 {stagePhases.map((phase) => {
                   const phaseTps = touchpointsForColumn(touchpoints, swimlane.id, col, phase.id);
                   return (
@@ -1062,43 +1001,6 @@ function MomentsGridRow({
                   <div className="min-h-[60px]" />
                 )}
               </div>
-              {/* Callouts — separate row, each with width matching its assigned phases */}
-              {allCallouts.length > 0 && (
-                <div className="relative flex min-w-0 flex-col gap-1 [contain:inline-size]">
-                  {allCallouts.map((c) => {
-                    const ids = c.phaseIds;
-                    let calloutWidth: number | "100%" = rowHasTouchpoints ? totalPhaseWidth : "100%";
-                    let calloutLeft = 0;
-
-                    if (rowHasTouchpoints && ids && ids.length > 0 && ids.length < stagePhases.length) {
-                      const matched = new Set(ids);
-                      const firstIdx = stagePhases.findIndex((p) => matched.has(p.id));
-                      const lastIdx  = stagePhases.reduce((last, p, idx) => (matched.has(p.id) ? idx : last), -1);
-                      if (firstIdx === -1 || lastIdx === -1) return null;
-                      calloutLeft = 0;
-                      for (let k = 0; k < firstIdx; k++) {
-                        calloutLeft += (phaseMinWidths?.get(stagePhases[k].id) ?? 176) + PHASE_GAP;
-                      }
-                      calloutWidth = 0;
-                      for (let k = firstIdx; k <= lastIdx; k++) {
-                        calloutWidth += phaseMinWidths?.get(stagePhases[k].id) ?? 176;
-                        if (k > firstIdx) calloutWidth += PHASE_GAP;
-                      }
-                    }
-
-                    return (
-                      <div key={c.id} style={{ marginLeft: calloutLeft, width: calloutWidth }}>
-                        <CalloutBadge
-                          callout={c}
-                          editMode={editMode}
-                          onEditEntity={onEditEntity}
-                          onDeleteEntity={onDeleteEntity}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
               {editMode && (
                 <AddButton
                   type="callout"
@@ -1113,17 +1015,16 @@ function MomentsGridRow({
 
         // Phase-group swimlane but no phases exist for this stage → empty cell
         if (groupPhases) {
-          return <div key={i} className="pt-2" />;
+          return <div key={i} data-sl-cell={swimlane.id} className="pt-2" />;
         }
 
         // Orphan swimlane: single cell, no phase filter
         {
           const colTouchpoints = touchpointsForColumn(touchpoints, swimlane.id, col, undefined);
-          const colCallouts = calloutsForColumn(callouts, swimlane.id, col, undefined);
           return (
-            <div key={i} className="flex flex-col gap-2 overflow-visible pt-2">
+            <div key={i} data-sl-cell={swimlane.id} className="flex flex-col gap-2 overflow-visible pt-2">
               {/* Touchpoints row with inline + button */}
-              <div className="flex items-stretch gap-2 overflow-visible">
+              <div className="flex items-stretch justify-center gap-2 overflow-visible">
                 {colTouchpoints.map((tp) => (
                   <div key={tp.id} className="w-[176px] shrink-0 overflow-visible [&:hover]:z-20">
                     <TouchpointCard
@@ -1149,14 +1050,6 @@ function MomentsGridRow({
                   <div className="min-h-[60px]" />
                 )}
               </div>
-              {/* Callouts row */}
-              {colCallouts.length > 0 && (
-                <div className="flex min-w-0 flex-col gap-1 [contain:inline-size]">
-                  {colCallouts.map((c) => (
-                    <CalloutBadge key={c.id} callout={c} editMode={editMode} onEditEntity={onEditEntity} onDeleteEntity={onDeleteEntity} />
-                  ))}
-                </div>
-              )}
               {editMode && (
                 <AddButton
                   type="callout"
@@ -1169,6 +1062,77 @@ function MomentsGridRow({
           );
         }
       })}
+
+      {/* ── Unified callout strip ─────────────────────────────────────────────
+          Uses CSS subgrid so each stage group is pinned directly under its
+          stage column(s). Every badge is w-[220px]; narrow columns overflow
+          with overflow-visible which is fine. */}
+      {(() => {
+        const swimlaneCallouts = callouts.filter((c) => c.swimlaneId === swimlane.id);
+        if (swimlaneCallouts.length === 0) return null;
+
+        // Build per-stage metadata: name + how many grid columns it spans
+        const stageNameMap = new Map(stages.map((s) => [s.id, s.name]));
+        const seenStages = new Set<string>();
+        const stageOrder: Array<{ stageId: string; span: number }> = [];
+        for (const col of gridColumns) {
+          if (!seenStages.has(col.stageId)) {
+            seenStages.add(col.stageId);
+            stageOrder.push({ stageId: col.stageId, span: 1 });
+          } else {
+            stageOrder[stageOrder.length - 1].span++;
+          }
+        }
+
+        return (
+          <div
+            data-sl-cell={swimlane.id}
+            style={{
+              gridColumn: `2 / ${gridColumns.length + 2}`,
+              display: "grid",
+              gridTemplateColumns: "subgrid",
+              alignItems: "start",
+            }}
+            className="pb-3 pt-1"
+          >
+            {stageOrder.map(({ stageId, span }) => {
+              const items = swimlaneCallouts
+                .filter((c) => c.stageId === stageId)
+                .sort((a, b) => a.order - b.order);
+
+              // Always render a placeholder cell to keep subgrid columns aligned
+              if (items.length === 0) {
+                return <div key={stageId} style={{ gridColumn: `span ${span}` }} />;
+              }
+
+              return (
+                <div
+                  key={stageId}
+                  style={{ gridColumn: `span ${span}`, contain: "inline-size" }}
+                  className="flex flex-col items-center gap-1.5 overflow-visible"
+                >
+                  {items[0]?.showStageTitle !== false && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-gray-400">
+                      {stageNameMap.get(stageId)}
+                    </span>
+                  )}
+                  <div className="flex flex-row flex-wrap justify-center gap-2 overflow-visible">
+                    {items.map((c) => (
+                      <CalloutBadge
+                        key={c.id}
+                        callout={c}
+                        editMode={editMode}
+                        onEditEntity={onEditEntity}
+                        onDeleteEntity={onDeleteEntity}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1210,7 +1174,7 @@ function MotivationMapGridRow({
   return (
     <>
       {/* Chart row */}
-      <div style={{ display: "contents" }}>
+      <div style={{ display: "contents" }} data-sl-row={swimlane.id}>
         {/* Label */}
         <div
           className={[
@@ -1232,6 +1196,7 @@ function MotivationMapGridRow({
             <button
               type="button"
               onClick={onToggleCollapse}
+              data-collapse-for={swimlane.id}
               title={`Collapse ${swimlane.name}`}
               className="flex items-start justify-end gap-1 rounded text-right transition-opacity hover:opacity-70"
             >
@@ -1251,6 +1216,7 @@ function MotivationMapGridRow({
 
         {/* SVG spanning all columns */}
         <div
+          data-sl-cell={swimlane.id}
           style={{ gridColumn: `span ${gridColumns.length}` }}
           className="min-w-0 pt-2"
         >
@@ -1260,6 +1226,7 @@ function MotivationMapGridRow({
             onDragPoint={onDragMotivationPoint}
             onEditPoint={onEditMotivationPoint}
             onAddPoint={onAddMotivationPoint}
+            swimlaneId={swimlane.id}
           />
         </div>
       </div>

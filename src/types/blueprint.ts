@@ -122,6 +122,8 @@ export interface Touchpoint {
   hoverTitle?: string;
   /** Hover card description — shown when hovering the touchpoint. */
   hoverDescription?: string;
+  /** CTA button label shown at the bottom of the card when a link is present. */
+  ctaText?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +142,8 @@ export interface Callout {
   label?: string;
   title: string;
   description?: string;
+  /** When true, the stage/phase title is shown as a header inside the badge. Defaults to false. */
+  showStageTitle?: boolean;
   order: number;
 }
 

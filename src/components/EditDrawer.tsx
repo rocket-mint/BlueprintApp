@@ -610,6 +610,7 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
   const [channelType, setChannelType] = useState(existing?.channelType ?? "");
   const [imageUrl, setImageUrl] = useState(existing?.imageUrl ?? "");
   const [linkUrl, setLinkUrl] = useState(existing?.linkUrl ?? "");
+  const [ctaText, setCtaText] = useState(existing?.ctaText ?? "");
   const [customNotes, setCustomNotes] = useState(existing?.customNotes ?? "");
   const [hoverTitle, setHoverTitle] = useState(existing?.hoverTitle ?? "");
   const [hoverDescription, setHoverDescription] = useState(existing?.hoverDescription ?? "");
@@ -626,6 +627,7 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
       description: description.trim() || undefined,
       imageUrl: imageUrl || undefined,
       linkUrl: linkUrl.trim() || undefined,
+      ctaText: ctaText.trim() || undefined,
       customNotes: customNotes.trim() || undefined,
       hoverTitle: hoverTitle.trim() || undefined,
       hoverDescription: hoverDescription.trim() || undefined,
@@ -683,6 +685,9 @@ function TouchpointForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProp
           <Field label="Description"><TextArea value={description} onChange={setDescription} placeholder="Optional description" /></Field>
           <Field label="Image"><ImageUpload value={imageUrl} onChange={setImageUrl} /></Field>
           <Field label="Hyperlink"><TextInput value={linkUrl} onChange={setLinkUrl} placeholder="https://example.com" /></Field>
+          {linkUrl.trim() && (
+            <Field label="CTA Button Text"><TextInput value={ctaText} onChange={setCtaText} placeholder="e.g. View Prototype" /></Field>
+          )}
           <Field label="Quotes"><TextArea value={customNotes} onChange={setCustomNotes} placeholder="Custom notes" rows={2} /></Field>
         </>
       )}
@@ -722,6 +727,7 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
   const [label, setLabel] = useState(existing?.label ?? "");
   const [stageId, setStageId] = useState(existing?.stageId ?? parentStage ?? bp.journeyStages[0]?.id ?? "");
   const [swimlaneId] = useState(existing?.swimlaneId ?? parentSwimlane ?? "");
+  const [showStageTitle, setShowStageTitle] = useState(existing?.showStageTitle ?? true);
   const [phaseIds, setPhaseIds] = useState<string[]>(existing?.phaseIds ?? []);
 
   // If the swimlane is a phase-group lane, find available phases for current stage + group
@@ -745,10 +751,10 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
       const newId = slugify(title) || id;
       dispatch({
         type: "ADD_CALLOUT",
-        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, label: label.trim() || undefined, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, order: bp.callouts.length + 1 } as Callout,
+        callout: { id: newId, stageId, swimlaneId: swimlaneId || undefined, type: calloutType, label: label.trim() || undefined, title: title.trim(), description: description.trim() || undefined, phaseIds: resolvedPhaseIds, showStageTitle: showStageTitle === false ? false : undefined, order: bp.callouts.length + 1 } as Callout,
       });
     } else {
-      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, label: label.trim() || undefined, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds } });
+      dispatch({ type: "UPDATE_CALLOUT", id, changes: { title: title.trim(), type: calloutType, label: label.trim() || undefined, stageId, swimlaneId: swimlaneId || undefined, description: description.trim() || undefined, phaseIds: resolvedPhaseIds, showStageTitle: showStageTitle === false ? false : undefined } });
     }
     onClose();
   };
@@ -799,6 +805,15 @@ function CalloutForm({ id, bp, dispatch, isNew, parentId, onClose }: FormProps) 
       <Field label="Description">
         <MarkdownEditor value={description} onChange={setDescription} placeholder="Supports **bold**, *italic*, and - bullet lists" />
       </Field>
+      <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 hover:bg-neutral-gray-50">
+        <input
+          type="checkbox"
+          className="accent-brand-cyan-500"
+          checked={showStageTitle}
+          onChange={(e) => setShowStageTitle(e.target.checked)}
+        />
+        <span className="text-[13px] text-brand-navy-900">Show stage title above callouts</span>
+      </label>
       <SaveButton onSave={save} disabled={false} />
     </div>
   );

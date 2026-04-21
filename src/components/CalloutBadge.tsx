@@ -62,7 +62,7 @@ export function CalloutBadge({ callout, editMode, onEditEntity, onDeleteEntity }
 
   return (
     <div
-      className={`group/co flex w-full items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${isEditing ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500" : style.border}`}
+      className={`group/co flex w-[300px] shrink-0 items-start gap-1.5 rounded-md border p-1.5 ${style.bg} ${isEditing ? "ring-2 ring-brand-cyan-500 border-brand-cyan-500" : style.border}`}
       title={callout.description ?? undefined}
     >
       <span className={`shrink-0 text-[11px] leading-none ${style.icon}`}>
