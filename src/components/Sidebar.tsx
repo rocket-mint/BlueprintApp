@@ -139,7 +139,7 @@ const RichTextEditor = ({
         contentEditable
         suppressContentEditableWarning
         data-placeholder={placeholder}
-        className={`min-h-[80px] px-2 py-1 text-brand-navy-900 outline-none [&_ul]:ml-4 [&_ul]:list-disc ${className}`}
+        className={`min-h-[80px] px-2 py-1 text-brand-navy-900 outline-none [&_ul]:ml-4 [&_ul]:list-disc [&>p]:mb-2 [&>div]:mb-2 [&>p:last-child]:mb-0 [&>div:last-child]:mb-0 ${className}`}
         style={{ whiteSpace: "pre-wrap" }}
       />
     </div>
@@ -383,8 +383,8 @@ export function Sidebar({ editMode }: SidebarProps) {
           />
         </div>
       ) : (
-        <p
-          className="mb-5 text-xs leading-relaxed text-brand-navy-900/80 [&_ul]:ml-4 [&_ul]:list-disc"
+        <div
+          className="mb-5 text-xs leading-relaxed text-brand-navy-900/80 [&_ul]:ml-4 [&_ul]:list-disc [&>p]:mb-2 [&>div]:mb-2 [&>p:last-child]:mb-0 [&>div:last-child]:mb-0"
           dangerouslySetInnerHTML={{ __html: intro }}
         />
       )}
@@ -400,8 +400,8 @@ export function Sidebar({ editMode }: SidebarProps) {
               placeholder="How to use instructions"
             />
           ) : (
-            <span
-              className="[&_ul]:ml-4 [&_ul]:list-disc"
+            <div
+              className="[&_ul]:ml-4 [&_ul]:list-disc [&>p]:mb-2 [&>div]:mb-2 [&>p:last-child]:mb-0 [&>div:last-child]:mb-0"
               dangerouslySetInnerHTML={{ __html: howToUse }}
             />
           )}
